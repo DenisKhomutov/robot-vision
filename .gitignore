@@ -32,6 +32,7 @@ yolo_train/data/
 yolo_train/exp/
 yolo_train/exp_result/
 yolo_train/exp_result_distinct/
+yolo_train/segmentation/new_data/
 yolo_train/_data_resolved.yaml
 runs/
 pred_val/
