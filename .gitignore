@@ -1,0 +1,43 @@
+.env
+.env.*
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+.uv/
+
+data/
+qdrant_storage/
+weights/
+
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# веса моделей (крупные бинарники) — не в git; при нужде Releases/LFS
+*.pt
+
+# yolo_train: тяжёлые артефакты (веса, данные, видео, выводы)
+yolo_train/weights/
+yolo_train/data/
+yolo_train/exp/
+yolo_train/exp_result/
+yolo_train/exp_result_distinct/
+yolo_train/_data_resolved.yaml
+runs/
+pred_val/
+
+# experiment: склонированный сторонний репо + сгенерированные картинки
+experiment/reloc3r/
+experiment/results/
+experiment/results_*/
+experiment/images/
