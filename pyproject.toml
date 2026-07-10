@@ -1,0 +1,72 @@
+[project]
+name = "place-recognition-model"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "torch",
+    "torchvision",
+    "pillow",
+    "numpy",
+    "qdrant-client[fastembed]",
+    "tqdm",
+    "opencv-python",
+    "ultralytics",
+    "loguru>=0.7.3",
+    "fastapi>=0.136.3",
+    "uvicorn[standard]>=0.48.0",
+    "python-multipart>=0.0.30",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.9",
+    "mypy>=1.20.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "module2_localization", "module1_traffic_light", "module3_segmentation"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+strict = true
+exclude = ["venv", ".venv", "data", "qdrant_storage", "experiment"]
+
+[[tool.mypy.overrides]]
+module = ["torch.*", "torchvision.*", "tqdm.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["ultralytics", "ultralytics.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.ruff]
+target-version = "py312"
+exclude = ["venv", ".venv", "data", "qdrant_storage", "experiment"]
+line-length = 120
+indent-width = 4
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.ruff.lint]
+ignore = ["TID252"]
+select = [
+    "F",      # pyflakes
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "I",      # isort
+    "Q",      # quotes
+    "TID",    # tidy imports
+    "ANN",    # annotations
+    "FAST",
+    "T20",    # print
+    "B",      # bugbear
+    "SIM",    # simplify
+    "ISC002", # implicit-str-concat
+    "ISC003",
+]

@@ -1,0 +1,20 @@
+FROM dustynv/pytorch:2.7-r36.4.0
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple \
+    "qdrant-client[fastembed]" \
+    "fastapi>=0.100.0" \
+    "uvicorn[standard]" \
+    python-multipart \
+    python-dotenv \
+    loguru \
+    httpx \
+    ultralytics
+
+COPY module2_localization/ ./module2_localization/
+COPY module1_traffic_light/ ./module1_traffic_light/
+COPY module3_segmentation/ ./module3_segmentation/
+COPY app/ ./app/

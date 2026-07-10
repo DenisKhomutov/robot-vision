@@ -1,0 +1,7 @@
+.venv/
+qdrant_storage/
+data/photo/
+__pycache__/
+*.pyc
+.env.local
+.git/

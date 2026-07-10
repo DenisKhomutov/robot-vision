@@ -1,0 +1,12 @@
+{
+  "image0": "experiment/images/current.jpg",
+  "image1": "experiment/images/reference.jpg",
+  "weights": "outdoor",
+  "device": "cpu",
+  "matches_after_filter": 50,
+  "matches_inliers": 30,
+  "min_conf": 0.5,
+  "max_matches": 50,
+  "horizontal_shift_norm": -0.03882886469364166,
+  "steering_hint_debug": "straight"
+}

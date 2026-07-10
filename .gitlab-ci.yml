@@ -1,0 +1,60 @@
+stages:
+  - build
+  - test
+  - release
+  - cleanup
+
+build:
+  stage: build
+  image: docker:20.10.24
+  variables:
+    DOCKER_BUILDKIT: "1"
+    BUILDKIT_PROGRESS: "plain"
+  before_script:
+    - docker login -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD" "$REGISTRY_URL"
+  script:
+    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" .
+  retry: 2
+
+ruff-format:
+  stage: test
+  script:
+    - docker run --rm -i "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" bash -c "
+      uv run --group dev ruff format --check .
+      "
+  before_script: []
+  retry: 2
+
+ruff-check:
+  stage: test
+  script:
+    - docker run --rm -i "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" bash -c "
+      uv run --group dev ruff check . --output-format=gitlab > gl-code-quality-report.json
+      "
+  before_script: []
+  retry: 2
+
+mypy:
+  stage: test
+  script:
+    - docker run --rm -i "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" bash -c "
+      uv run --group dev mypy --config-file pyproject.toml app/ module1_traffic_light/ module2_localization/ module3_segmentation/ tools/
+      "
+  before_script: []
+  retry: 2
+
+latest_release:
+  stage: release
+  before_script:
+    - docker login -u "$REGISTRY_USER" -p "$REGISTRY_PASSWORD" "$REGISTRY_URL"
+  script:
+    - docker tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" "$CI_REGISTRY_IMAGE:latest"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  only:
+    - master
+
+cleanup:
+  stage: cleanup
+  script:
+    - docker rmi "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_NAME" || true
+  when: always
