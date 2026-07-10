@@ -10,7 +10,7 @@ from ultralytics import YOLO
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL = str(PROJECT_ROOT / "yolo_train" / "weights" / "yolo26m-sem.pt")
-DATA = "PATH/TO/segmentation/data.yaml"
+DATA = "yolo_train/data/segm/data.yaml"
 OUT_PROJECT = str(PROJECT_ROOT / "yolo_train" / "segmentation" / "runs")
 FREEZE = 0
 
