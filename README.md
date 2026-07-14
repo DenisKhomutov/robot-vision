@@ -1,3 +1,21 @@
+# Robot Vision
+
+Микросервис компьютерного зрения для робота-доставщика. Основные модули:
+
+- **Модуль 1 — распознавание светофоров** (`module1_traffic_light`)
+- **Модуль 3 — сегментация дорожного покрытия** (`module3_segmentation`)
+- Модуль 2 — локализация (`module2_localization`) — легаси/резерв на случай отказа LiDAR
+
+## Подготовка
+
+```bash
+# скопировать шаблон окружения и заполнить значения
+cp .env.example .env
+
+# веса моделей положить в ./weights: best_det.pt, best_cls.pt, best_seg.pt
+```
+
+## Линтеры и типы
 
 ```bash
 # Проверка форматирования
@@ -10,7 +28,8 @@ uv run --group dev ruff check .
 uv run --group dev ruff check --fix .
 
 # Проверка типов
-uv run --group dev mypy --config-file pyproject.toml module1_traffic_light/ module2_localization/ tools/
+uv run --group dev mypy --config-file pyproject.toml \
+    app/ module1_traffic_light/ module2_localization/ module3_segmentation/ tools/
 ```
 
 ## Запуск Docker
@@ -20,7 +39,10 @@ docker compose up --build
 
 docker compose -f docker-compose.jetson.yml up --build
 
-curl.exe -X POST "http://192.168.40.203:8091/api/capture-and-send/" -H "X-Capture-Token: e3e7af7028979acf0fbccfc01174c91ea32aab173eaf5c1b1f271a7c146e3fa2" -H "Content-Type: application/json" -d '{\"request_id\": \"test-1\"}'
+curl -X POST "http://192.168.40.203:8091/api/capture-and-send/" \
+  -H "X-Capture-Token: e3e7af7028979acf0fbccfc01174c91ea32aab173eaf5c1b1f271a7c146e3fa2" \
+  -H "Content-Type: application/json" \
+  -d '{"request_id": "test-1"}'
 
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
