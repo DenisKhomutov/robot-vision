@@ -9,8 +9,8 @@ from pathlib import Path
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SRC = PROJECT_ROOT / "yolo_train" / "data" / "dataset for segm"
-DST = PROJECT_ROOT / "yolo_train" / "data" / "segm"
+SRC = PROJECT_ROOT / "yolo_train" / "data" / "dataset for segm v2"
+DST = PROJECT_ROOT / "yolo_train" / "data" / "segm v2"
 SPLIT_MAP = {"train": "train", "valid": "val", "test": "test"}
 NAMES = {0: "background", 1: "crosswalk", 2: "curb", 3: "road", 4: "sidewalk", 5: "terrain"}
 
