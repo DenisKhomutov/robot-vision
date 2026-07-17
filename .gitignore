@@ -43,3 +43,17 @@ experiment/reloc3r/
 experiment/results/
 experiment/results_*/
 experiment/images/
+
+# experiment: сгенерированные панели — регенерируются скриптами
+experiment/edge_out/
+experiment/edge_out_*/
+experiment/edge_out*(Copy)*/
+experiment/edge_batch_out/
+experiment/ade_classes_out/
+experiment/ade_test/
+experiment/pose_out/
+
+# 3D_VPR_exp: нарезанные кадры, карты, выводы
+3D_VPR_exp/data/
+3D_VPR_exp/maps/
+3D_VPR_exp/out/

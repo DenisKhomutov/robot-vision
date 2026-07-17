@@ -1,182 +1,154 @@
+import sys
 import time
 from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
 
-IMAGE0 = "experiment/images/current.jpg"
-IMAGE1 = "experiment/images/reference.jpg"
-OUTDIR = "experiment/results_xfeat"
+sys.path.insert(0, str(Path(__file__).parent / "xfeat_src"))
+from modules.xfeat import XFeat  # noqa: E402
 
-MAX_SIDE = 640
+INTRINSICS = "experiment/camera_intrinsics.npz"
+XFEAT_W = "experiment/weights/xfeat.pt"
+OUT_DIR = Path("experiment/pose_out")
+
+ROUTE = "data/route_reference/route_B/forward/front"
+ROUTE_PAIRS = [(1, 2), (2, 3), (5, 6), (9, 10), (9, 11), (14, 15), (17, 18)]
+
 TOP_K = 4096
-MAX_MATCHES = 0
-MAX_DRAW = 25
-ARROW_SCALE = 0.15
-ARROW_COLOR = (0, 165, 255)
-FORCE_CPU = True
-
-USE_STAR = True
-
-MIN_COSSIM = 0.82
-
-HFOV_DEG = 91.8
+MIN_MATCHES = 20
+RANSAC_PX = 3.0
+AGREE_TOL = 3.0
 
 
-def resize_keep_aspect(img_bgr: np.ndarray, max_side: int = MAX_SIDE, multiple: int = 8) -> np.ndarray:
-    h, w = img_bgr.shape[:2]
-    scale = max_side / max(h, w)
-    new_w, new_h = (int(w * scale), int(h * scale)) if scale < 1.0 else (w, h)
-    new_w = max(multiple, (new_w // multiple) * multiple)
-    new_h = max(multiple, (new_h // multiple) * multiple)
-    return cv2.resize(img_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+def rot_to_yaw(r):
+    return -float(np.degrees(np.arctan2(r[0, 2], r[2, 2])))
 
 
-def create_match_canvas(
-    img0_bgr: np.ndarray,
-    img1_bgr: np.ndarray,
-    pts0: np.ndarray,
-    pts1: np.ndarray,
-    max_draw: int = MAX_DRAW,
-) -> np.ndarray:
-    h0, w0 = img0_bgr.shape[:2]
-    h1, w1 = img1_bgr.shape[:2]
-    canvas = np.zeros((max(h0, h1), w0 + w1, 3), dtype=np.uint8)
-    canvas[:h0, :w0] = img0_bgr
-    canvas[:h1, w0 : w0 + w1] = img1_bgr
-
-    if len(pts0) == 0:
-        return canvas
-
-    n = min(len(pts0), max_draw)
-    for idx in range(n):
-        p0 = (int(pts0[idx][0]), int(pts0[idx][1]))
-        p1 = (int(pts1[idx][0]) + w0, int(pts1[idx][1]))
-        hue = int(180 * idx / max(n, 1)) 
-        color = tuple(int(c) for c in cv2.cvtColor(np.uint8([[[hue, 255, 255]]]), cv2.COLOR_HSV2BGR)[0, 0])
-        cv2.circle(canvas, p0, 3, color, -1)
-        cv2.circle(canvas, p1, 3, color, -1)
-        cv2.line(canvas, p0, p1, color, 1, cv2.LINE_AA)
-
-    return canvas
+def yaw_from_homography(p0, p1, k):
+    h, mask = cv2.findHomography(p0, p1, cv2.USAC_MAGSAC, RANSAC_PX, confidence=0.999, maxIters=10000)
+    if h is None:
+        return None, 0
+    r = np.linalg.inv(k) @ h @ k
+    u, _, vt = np.linalg.svd(r)
+    r = u @ vt
+    if np.linalg.det(r) < 0:
+        r = u @ np.diag([1.0, 1.0, -1.0]) @ vt
+    return rot_to_yaw(r), int(mask.sum()) if mask is not None else 0
 
 
-def draw_motion(img_current: np.ndarray, pts0: np.ndarray, pts1: np.ndarray, max_draw: int = MAX_DRAW) -> np.ndarray:
-    canvas = img_current.copy()
-    for idx in range(min(len(pts0), max_draw)):
-        x0, y0 = float(pts0[idx][0]), float(pts0[idx][1])
-        x1, y1 = float(pts1[idx][0]), float(pts1[idx][1])
-        ex, ey = x0 - (x1 - x0) * ARROW_SCALE, y0 - (y1 - y0) * ARROW_SCALE
-        cv2.arrowedLine(canvas, (int(x0), int(y0)), (int(ex), int(ey)), ARROW_COLOR, 1, cv2.LINE_AA, tipLength=0.3)
-    return canvas
+def yaw_from_essential(p0, p1, k):
+    e, mask = cv2.findEssentialMat(p0, p1, k, method=cv2.USAC_MAGSAC, prob=0.999, threshold=1.0)
+    if e is None or e.shape[0] % 3 != 0:
+        return None, 0
+    n, r, _, _ = cv2.recoverPose(e[:3], p0, p1, k, mask=mask)
+    return rot_to_yaw(r), int(n)
 
 
-def similarity_heatmap(img0_bgr: np.ndarray, img1_bgr: np.ndarray, pts0: np.ndarray, pts1: np.ndarray) -> np.ndarray:
-    def overlay(img: np.ndarray, pts: np.ndarray) -> np.ndarray:
-        h, w = img.shape[:2]
-        acc = np.zeros((h, w), dtype=np.float32)
-        for x, y in pts:
-            xi, yi = int(x), int(y)
-            if 0 <= xi < w and 0 <= yi < h:
-                acc[yi, xi] += 1.0
-        acc = cv2.GaussianBlur(acc, (0, 0), 15)
-        peak = float(acc.max())
-        if peak > 0:
-            acc = acc / peak
-        heat = cv2.applyColorMap((acc * 255).astype(np.uint8), cv2.COLORMAP_JET)
-        return cv2.addWeighted(img, 0.6, heat, 0.4, 0)
-
-    return np.hstack([overlay(img0_bgr, pts0), overlay(img1_bgr, pts1)])
+def load_model():
+    return XFeat(weights=XFEAT_W, top_k=TOP_K)
 
 
-def ransac_inliers(pts0: np.ndarray, pts1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    if len(pts0) < 8:
-        return pts0, pts1
-    try:
-        _, inliers = cv2.findFundamentalMat(
-            pts0, pts1, method=cv2.USAC_MAGSAC, ransacReprojThreshold=0.5, confidence=0.999, maxIters=10000
-        )
-        if inliers is None:
-            return pts0, pts1
-        mask = inliers.ravel().astype(bool)
-        return pts0[mask], pts1[mask]
-    except Exception as e:
-        print(f"[WARN] RANSAC failed: {e}")
-        return pts0, pts1
+def match(xf, i0, i1):
+    t = time.perf_counter()
+    p0, p1 = xf.match_xfeat(i0, i1, top_k=TOP_K)
+    return p0, p1, (time.perf_counter() - t) * 1000
 
 
-def estimate_basic_shift(pts0: np.ndarray, pts1: np.ndarray, w0: int, w1: int) -> dict:
-    if len(pts0) == 0:
-        return {"horizontal_shift_norm": None, "steering_hint_debug": "unknown"}
-
-    shift = float(np.median(pts0[:, 0] / max(w0, 1) - pts1[:, 0] / max(w1, 1)))
-    dead_zone = 0.05
-    if shift > dead_zone:
-        hint = "right"
-    elif shift < -dead_zone:
-        hint = "left"
-    else:
-        hint = "straight"
-
-    yaw_deg = float(np.degrees(np.arctan(2.0 * shift * np.tan(np.radians(HFOV_DEG) / 2.0))))
-
-    return {
-        "horizontal_shift_norm": round(shift, 4),
-        "yaw_deg_approx": round(yaw_deg, 1),
-        "steering_hint_debug": hint,
-    }
+def estimate(p0, p1, k):
+    out = {"yaw_deg": None, "homog": None, "essent": None, "disagree_deg": None,
+           "confident": False, "n_h": 0, "n_e": 0}
+    if len(p0) < MIN_MATCHES:
+        return out
+    yh, nh = yaw_from_homography(p0, p1, k)
+    ye, ne = yaw_from_essential(p0, p1, k)
+    out.update({"homog": yh, "essent": ye, "n_h": nh, "n_e": ne})
+    if yh is None and ye is None:
+        return out
+    if yh is None or ye is None:
+        out["yaw_deg"] = yh if yh is not None else ye
+        return out
+    gap = abs(yh - ye)
+    out["disagree_deg"] = round(gap, 2)
+    out["confident"] = gap <= AGREE_TOL
+    out["yaw_deg"] = round((yh + ye) / 2 if gap <= AGREE_TOL else yh, 2)
+    return out
 
 
-def main() -> None:
-    outdir = Path(OUTDIR)
-    outdir.mkdir(parents=True, exist_ok=True)
+def fmt(v):
+    return f"{v:+7.2f}" if v is not None else "   n/a "
 
-    device = torch.device("cpu" if FORCE_CPU or not torch.cuda.is_available() else "cuda")
-    print(f"[INFO] device = {device}")
 
-    img0_original = cv2.imread(IMAGE0)
-    img1_original = cv2.imread(IMAGE1)
-    if img0_original is None:
-        raise FileNotFoundError(f"Не удалось прочитать image0: {IMAGE0}")
-    if img1_original is None:
-        raise FileNotFoundError(f"Не удалось прочитать image1: {IMAGE1}")
+def draw_pair(i0, i1, p0, p1, title, res, max_draw=60):
+    h0, w0 = i0.shape[:2]
+    h1, w1 = i1.shape[:2]
+    top = np.zeros((max(h0, h1), w0 + w1, 3), np.uint8)
+    top[:h0, :w0] = i0
+    top[:h1, w0:w0 + w1] = i1
 
-    img0 = resize_keep_aspect(img0_original)
-    img1 = resize_keep_aspect(img1_original)
-    print(f"[INFO] image0: {img0.shape[1]}x{img0.shape[0]}, image1: {img1.shape[1]}x{img1.shape[0]}")
+    inl = np.zeros(len(p0), bool)
+    if len(p0) >= MIN_MATCHES:
+        _, mask = cv2.findHomography(p0, p1, cv2.USAC_MAGSAC, RANSAC_PX, confidence=0.999, maxIters=10000)
+        if mask is not None:
+            inl = mask.ravel().astype(bool)
 
-    t0 = time.perf_counter()
-    xfeat = torch.hub.load("verlab/accelerated_features", "XFeat", pretrained=True, top_k=TOP_K)
-    xfeat = xfeat.to(device).eval()
-    t_load = time.perf_counter() - t0
-    print(f"[INFO] XFeat загружен за {t_load:.2f}с")
+    step = max(1, len(p0) // max_draw)
+    for i in range(0, len(p0), step):
+        a = (int(p0[i][0]), int(p0[i][1]))
+        b = (int(p1[i][0]) + w0, int(p1[i][1]))
+        col = (120, 230, 120) if inl[i] else (60, 60, 160)
+        cv2.line(top, a, b, col, 1, cv2.LINE_AA)
+        cv2.circle(top, a, 2, col, -1)
+        cv2.circle(top, b, 2, col, -1)
 
-    t0 = time.perf_counter()
-    with torch.inference_mode():
-        if USE_STAR:
-            pts0, pts1 = xfeat.match_xfeat_star(img0, img1, top_k=TOP_K)
-        else:
-            pts0, pts1 = xfeat.match_xfeat(img0, img1, top_k=TOP_K, min_cossim=MIN_COSSIM)
-    t_match = time.perf_counter() - t0
-    print(f"[INFO] матчинг: {t_match * 1000:.0f}мс, matches: {len(pts0)}")
+    f = cv2.FONT_HERSHEY_SIMPLEX
+    bar = np.full((170, top.shape[1], 3), 22, np.uint8)
+    cv2.putText(bar, title, (16, 34), f, 0.7, (235, 235, 235), 2)
+    cv2.putText(bar, f"XFeat + MNN    matches {len(p0)}   inliers_H {int(inl.sum())}",
+                (16, 66), f, 0.55, (150, 150, 150), 1)
 
-    pts0 = np.asarray(pts0)
-    pts1 = np.asarray(pts1)
+    yaw = res["yaw_deg"]
+    col = (120, 230, 120) if res["confident"] else (0, 165, 255)
+    cv2.putText(bar, "YAW (mean H+E)" if res["confident"] else "YAW (H only, disagree)",
+                (16, 98), f, 0.5, (135, 135, 135), 1)
+    cv2.putText(bar, f"{yaw:+.2f}" if yaw is not None else "n/a", (16, 140), f, 1.1, col, 2)
 
-    if MAX_MATCHES > 0 and len(pts0) > MAX_MATCHES:
-        pts0, pts1 = pts0[:MAX_MATCHES], pts1[:MAX_MATCHES]
+    x = 320
+    for label, val in (("homography", res["homog"]), ("essential", res["essent"]),
+                       ("disagree", res["disagree_deg"])):
+        cv2.putText(bar, label, (x, 98), f, 0.5, (135, 135, 135), 1)
+        cv2.putText(bar, f"{val:+.2f}" if val is not None else "n/a", (x, 140), f, 0.8, (200, 200, 200), 2)
+        x += 220
+    return np.vstack([top, bar])
 
-    pts0_in, pts1_in = ransac_inliers(pts0, pts1)
-    print(f"[INFO] inlier matches: {len(pts0_in)}")
 
-    cv2.imwrite(str(outdir / "xfeat_matches_all.jpg"), create_match_canvas(img0, img1, pts0, pts1))
-    cv2.imwrite(str(outdir / "xfeat_matches_inliers.jpg"), create_match_canvas(img0, img1, pts0_in, pts1_in))
-    cv2.imwrite(str(outdir / "xfeat_motion.jpg"), draw_motion(img0, pts0_in, pts1_in))
-    cv2.imwrite(str(outdir / "xfeat_similarity.jpg"), similarity_heatmap(img0, img1, pts0_in, pts1_in))
+def run_route(xf, k, dist):
+    print(f"{'para':<10}{'yaw':>9}{'homog':>9}{'essent':>9}{'disagree':>10}"
+          f"{'conf':>6}{'par':>7}{'in_h':>6}{'in_e':>6}{'ms':>7}")
+    for a, b in ROUTE_PAIRS:
+        f0, f1 = f"{ROUTE}/front{a}.jpg", f"{ROUTE}/front{b}.jpg"
+        if not (Path(f0).exists() and Path(f1).exists()):
+            continue
+        i0 = cv2.undistort(cv2.imread(f0), k, dist)
+        i1 = cv2.undistort(cv2.imread(f1), k, dist)
+        p0, p1, ms = match(xf, i0, i1)
+        r = estimate(p0, p1, k)
+        print(f"{f'{a}->{b}':<10}{fmt(r['yaw_deg']):>9}{fmt(r['homog']):>9}{fmt(r['essent']):>9}"
+              f"{fmt(r['disagree_deg']):>10}{str(r['confident']):>6}{len(p0):>7}"
+              f"{r['n_h']:>6}{r['n_e']:>6}{ms:>7.0f}")
+        panel = draw_pair(i0, i1, p0, p1, f"front{a} -> front{b}", r)
+        cv2.imwrite(str(OUT_DIR / f"route_{a}_{b}.jpg"),
+                    cv2.resize(panel, (panel.shape[1] // 2, panel.shape[0] // 2)))
 
-    print(f"[RESULT] {estimate_basic_shift(pts0_in, pts1_in, img0.shape[1], img1.shape[1])}")
-    print(f"[TIMING] load={t_load:.2f}s match={t_match * 1000:.0f}ms")
+
+def main():
+    intr = np.load(INTRINSICS)
+    k, dist = intr["K"], intr["dist"]
+    w = int(intr["image_size"][0]) if "image_size" in intr else 1280
+    hfov = float(np.degrees(2 * np.arctan(w / (2 * k[0, 0]))))
+    print(f"[INFO] K: fx={k[0, 0]:.1f} cx={k[0, 2]:.1f}   HFOV {hfov:.1f}   AGREE_TOL {AGREE_TOL}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    run_route(load_model(), k, dist)
 
 
 if __name__ == "__main__":

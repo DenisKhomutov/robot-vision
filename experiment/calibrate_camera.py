@@ -18,7 +18,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-CALIB_DIR = "experiment/calib_images"
+CALIB_DIR = "data/front"  # снимки шахматки 9x6, клетка 25мм
 OUT_NPZ = "experiment/camera_intrinsics.npz"
 BOARD_COLS = 9  # число ВНУТРЕННИХ углов по горизонтали
 BOARD_ROWS = 6  # число ВНУТРЕННИХ углов по вертикали
