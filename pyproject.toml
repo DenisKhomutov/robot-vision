@@ -16,6 +16,8 @@ dependencies = [
     "uvicorn[standard]>=0.48.0",
     "python-multipart>=0.0.30",
     "python-dotenv>=1.0.0",
+    "kornia>=0.8.2",
+    "pycolmap>=4.1.0",
 ]
 
 [dependency-groups]
