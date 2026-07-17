@@ -96,6 +96,8 @@ def main():
     ap.add_argument("--blur", type=float, default=40.0)
     ap.add_argument("--extract-only", action="store_true")
     ap.add_argument("--skip-extract", action="store_true")
+    ap.add_argument("--overlap", type=int, default=SEQ_OVERLAP)
+    ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
     video = Path(VIDEOS[args.video])
@@ -103,8 +105,9 @@ def main():
         log(f"ОШИБКА: нет видео {video}")
         return 1
 
-    work = ROOT / "maps" / args.video
-    images = ROOT / "data" / args.video
+    tag = args.out or args.video
+    work = ROOT / "maps" / tag
+    images = ROOT / "data" / tag
     db = work / "database.db"
     sparse = work / "sparse"
 
@@ -136,7 +139,7 @@ def main():
 
     match = ["colmap", "sequential_matcher",
              "--database_path", db,
-             "--SequentialMatching.overlap", str(SEQ_OVERLAP),
+             "--SequentialMatching.overlap", str(args.overlap),
              "--SiftMatching.use_gpu", "1"]
     if fetch_vocab_tree():
         match += ["--SequentialMatching.loop_detection", "1",
