@@ -1,10 +1,8 @@
 [project]
-name = "place-recognition-model"
+name = "robot-vision"
 version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "torchvision",
     "pillow",
     "numpy",
     "qdrant-client[fastembed]",
@@ -20,19 +18,43 @@ dependencies = [
     "pycolmap>=4.1.0",
 ]
 
+# torch вынесен в extras: uv не умеет выбирать по наличию GPU (маркеры статические),
+# поэтому вариант указывается явно при синхронизации.
+#   машина без GPU:  uv sync --extra cpu
+#   машина с GPU:    uv sync --extra cu126
+# Jetson идёт мимо этого: у него свой Dockerfile.jetson на образе dustynv/pytorch,
+# где torch уже собран под L4T, а uv sync не запускается вовсе.
+[project.optional-dependencies]
+cpu = ["torch", "torchvision"]
+cu126 = ["torch", "torchvision"]
+
 [dependency-groups]
 dev = [
     "ruff>=0.15.9",
     "mypy>=1.20.2",
 ]
 
+[tool.uv]
+conflicts = [[{ extra = "cpu" }, { extra = "cu126" }]]
+
 [tool.uv.sources]
-torch = [{ index = "pytorch-cpu" }]
-torchvision = [{ index = "pytorch-cpu" }]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cu126" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-cu126", extra = "cu126" },
+]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
