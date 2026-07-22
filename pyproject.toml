@@ -5,17 +5,14 @@ requires-python = ">=3.10"
 dependencies = [
     "pillow",
     "numpy",
-    "qdrant-client[fastembed]",
     "tqdm",
     "opencv-python",
     "ultralytics",
     "loguru>=0.7.3",
-    "fastapi>=0.136.3",
-    "uvicorn[standard]>=0.48.0",
-    "python-multipart>=0.0.30",
     "python-dotenv>=1.0.0",
     "kornia>=0.8.2",
     "pycolmap>=4.1.0",
+    "nats-py>=2.6.0",
 ]
 
 # torch вынесен в extras: uv не умеет выбирать по наличию GPU (маркеры статические),
@@ -58,7 +55,7 @@ url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["app", "module2_localization", "module1_traffic_light", "module3_segmentation"]
+packages = ["module2_localization", "module1_traffic_light", "module3_segmentation"]
 
 [build-system]
 requires = ["hatchling"]
@@ -66,7 +63,7 @@ build-backend = "hatchling.build"
 
 [tool.mypy]
 strict = true
-exclude = ["venv", ".venv", "data", "qdrant_storage", "experiment"]
+exclude = ["venv", ".venv", "data"]
 
 [[tool.mypy.overrides]]
 module = ["torch.*", "torchvision.*", "tqdm.*"]
@@ -79,7 +76,7 @@ follow_imports = "skip"
 
 [tool.ruff]
 target-version = "py312"
-exclude = ["venv", ".venv", "data", "qdrant_storage", "experiment"]
+exclude = ["venv", ".venv", "data"]
 line-length = 120
 indent-width = 4
 
