@@ -1,31 +1,22 @@
-import os
+from pathlib import Path
 
-from dotenv import load_dotenv
+_MODULE_ROOT = Path(__file__).resolve().parent
+MAPS_DIR = _MODULE_ROOT / "maps"
 
-# подгружаем .env (для standalone-запусков; в Docker env инжектит compose)
-load_dotenv()
+DEFAULT_MAP = "map_office_ref"
 
-QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
-QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
-COLLECTION_NAME = "place_recognition"
+QUERY_KPTS = 8192            # потолок точек ALIKED
+QUERY_DET_THRESHOLD = 0.05   
+QUERY_NMS_RADIUS = 2
+MAX_ERROR = 12.0             
 
-DINOV2_MODEL = "dinov2_vitl14"
-VECTOR_DIM = 2048
+MIN_INLIERS = 20             
 
-ROUTE_DIR = "data/route_reference"
+LOOKAHEAD_NODES = 12         # упреждение цели в узлах эталона
+DEADZONE_DEG = 8.0           # азимут меньше -> straight
+STEER_MODE = "pursuit"       # "pursuit" | "stanley"
 
-TOP_K = 5
-COSINE_THRESHOLD = 0.5
-P_COEF = 3
-MAX_JUMP = 5
+NATS_URL = "nats://127.0.0.1:4222"
+NATS_TOPIC = "robot.vision.localization"
 
-# веса камер в голосовании: боковые смотрят в однообразные заборы/стены
-# (перцептивный алиасинг), поэтому доверяем им меньше. Неизвестная камера → 1.0
-CAMERA_WEIGHTS = {"front": 1.0, "back": 1.0, "left": 0.5, "right": 0.5}
-
-EMBED_BATCH_SIZE = 8
-
-# деплой-значения (адреса, секреты) — из .env
-CONTROL_URL = os.getenv("CONTROL_URL") or None
-CAMERA_URL = os.getenv("CAMERA_URL") or None
-CAMERA_TOKEN = os.getenv("CAMERA_TOKEN") or None
+CAMERA = "0"

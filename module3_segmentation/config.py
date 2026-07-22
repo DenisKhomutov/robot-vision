@@ -1,7 +1,7 @@
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
-_WEIGHTS_DIR = _PROJECT_ROOT / "weights"
+_WEIGHTS_DIR = Path(__file__).resolve().parent / "weights"
 SEGMENTATION_WEIGHTS = str(_WEIGHTS_DIR / "best_seg.pt")
 
 SEG_CONF = 0.5
@@ -9,7 +9,7 @@ IMGSZ = 640
 
 ALLOWED_PATH_CLASS = "allowed_path"
 
-SEG_VIS_DIR = _PROJECT_ROOT / "data" / "seg_photos"
+SEG_VIS_DIR = Path(__file__).resolve().parent / "data" / "seg_photos"
 
 COLOR_ALLOWED = (235, 206, 135)
 COLOR_OBSTACLE = (62, 151, 228)
