@@ -22,6 +22,7 @@ DEADZONE_DEG = 4.0    # |азимут| меньше -> straight
 STANLEY_K = 1.0       # усиление поперечного члена Стэнли (per ед. карты, тюнится)
 LOOKAHEAD_MIN = 5     # адаптивное упреждение: не короче этого (иначе рыскание)
 LOOKAHEAD_ADAPT = 8.0 # на сколько узлов укорачивать упреждение на ед. бокового смещения
+STOP_END_NODES = 3    # ближайший узел в этих последних узлах эталона -> команда stop
 
 
 class Localizer:
@@ -202,7 +203,11 @@ class Localizer:
             to_flat = to - np.dot(to, down) * down
             ang = np.degrees(np.arctan2(np.dot(np.cross(f_flat, to_flat), down),
                                         np.dot(f_flat, to_flat)))
-        mt = "straight" if abs(ang) < DEADZONE_DEG else ("right" if ang > 0 else "left")
+        dz = getattr(self, "deadzone", None) or DEADZONE_DEG   # порог из конфига (через локализатор)
+        mt = "straight" if abs(ang) < dz else ("right" if ang > 0 else "left")
+        # ДОСТИГЛИ КОНЦА эталона -> стоп (ближайший узел в хвосте маршрута)
+        if k >= len(self.route) - 1 - STOP_END_NODES:
+            mt, ang = "stop", 0.0
         return {"node": k, "target_node": j, "dist_to_route": float(d[k]),
                 "offset": e, "bearing_deg": float(ang), "move_type": mt}
 

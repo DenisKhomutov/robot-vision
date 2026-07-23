@@ -27,6 +27,7 @@ def get_localizer():
             det_threshold=config.QUERY_DET_THRESHOLD,
             nms_radius=config.QUERY_NMS_RADIUS,
             max_error=config.MAX_ERROR,
+            route_cam=getattr(config, "ROUTE_CAM", None),
         )
     return _localizer
 

@@ -33,7 +33,7 @@ def log(m):
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
 
-def extract_synced(videos, imdir, step, width):
+def extract_synced(videos, imdir, step, width, max_frame=None):
     """Каждый step-й кадр каждой камеры, ужатый до width, имя {idx}_c{cam}.jpg."""
     if imdir.exists():
         shutil.rmtree(imdir)
@@ -48,6 +48,8 @@ def extract_synced(videos, imdir, step, width):
         while True:
             ok, frame = cap.read()
             if not ok:
+                break
+            if max_frame and idx > max_frame:   # обрезаем хвост (напр. трясущийся конец у стены)
                 break
             if idx % step == 0:
                 h, w = frame.shape[:2]
@@ -77,10 +79,14 @@ def main():
     ap.add_argument("--overlap", type=int, default=6, help="последовательные пары внутри камеры, ±N шагов")
     ap.add_argument("--kpts", type=int, default=4096)
     ap.add_argument("--det-threshold", type=float, default=0.2)
+    ap.add_argument("--max-frame", type=int, default=None, help="обрезать кадры видео после этого индекса")
     args = ap.parse_args()
 
+    sys.path.insert(0, str(ROOT / "core"))
+    from hub import use_local_weights
     from lightglue import ALIKED, LightGlue
     from lightglue.utils import load_image
+    use_local_weights()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     videos = [(ROOT / v if not Path(v).is_absolute() else Path(v)) for v in args.videos]
@@ -92,7 +98,7 @@ def main():
         db_path.unlink()
 
     log("--- нарезка синхронных кадров")
-    if extract_synced(videos, imdir, args.step, args.width) is None:
+    if extract_synced(videos, imdir, args.step, args.width, args.max_frame) is None:
         return 1
     names = sorted(p.name for p in imdir.glob("*.jpg"))
     meta = {n: parse(n) for n in names}

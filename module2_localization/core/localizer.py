@@ -20,10 +20,13 @@ DEADZONE_DEG = 4.0
 
 class AlikedLocalizer:
     def __init__(self, map_name="map_office_ref", device=None, kpts=2048, route_range=None,
-                 det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit"):
+                 det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit", route_cam=None):
+        from hub import use_local_weights
         from lightglue import ALIKED
+        use_local_weights()
         self.max_error = max_error
         self.steer = steer  # "pursuit" (упреждение) | "stanley"
+        self.route_cam = route_cam  # для риг-карт: маршрут только по кадрам этой камеры (напр. "_c2")
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
         self.rec = pycolmap.Reconstruction(str(work / "sparse" / "0"))
@@ -43,9 +46,26 @@ class AlikedLocalizer:
 
         by_name = {im.name: im for im in self.rec.images.values()}
         order = sorted(by_name)
+        if self.route_cam:  # риг-карта: маршрут по ОДНОЙ камере, иначе зигзаг между 3 путями
+            order = [n for n in order if self.route_cam in n]
         if route_range:
             a, b = route_range
             order = [n for n in order if a <= int("".join(filter(str.isdigit, n)) or 0) < b]
+        # выкидываем кадры-ВЫБРОСЫ (плохая регистрация: улетели далеко от обоих соседей).
+        # Иначе упреждающая цель может попасть на выброс -> команда «в бесконечность».
+        pos = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
+                         @ by_name[n].cam_from_world().translation) for n in order])
+        if len(pos) > 5:
+            seg = np.linalg.norm(np.diff(pos, axis=0), axis=1)
+            thr = 10 * np.median(seg)
+            keep = [True] * len(order)
+            for k in range(1, len(order) - 1):
+                if seg[k - 1] > thr and seg[k] > thr:
+                    keep[k] = False
+            dropped = len(order) - sum(keep)
+            if dropped:
+                print(f"[карта] выкинуто выбросов маршрута: {dropped}")
+            order = [n for n, kp in zip(order, keep) if kp]
         self.route = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
                                 @ by_name[n].cam_from_world().translation) for n in order])
         self.route_fwd = np.array([by_name[n].cam_from_world().rotation.matrix().T

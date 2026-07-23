@@ -13,6 +13,7 @@ dependencies = [
     "kornia>=0.8.2",
     "pycolmap>=4.1.0",
     "nats-py>=2.6.0",
+    "lightglue",
 ]
 
 # torch вынесен в extras: uv не умеет выбирать по наличию GPU (маркеры статические),
@@ -35,6 +36,7 @@ dev = [
 conflicts = [[{ extra = "cpu" }, { extra = "cu126" }]]
 
 [tool.uv.sources]
+lightglue = { git = "https://github.com/cvg/LightGlue.git" }
 torch = [
     { index = "pytorch-cpu", extra = "cpu" },
     { index = "pytorch-cu126", extra = "cu126" },

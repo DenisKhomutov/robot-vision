@@ -34,12 +34,17 @@ def odometry_distance(log_path: Path) -> float:
     return dist
 
 
-def route_length_units(map_name: str) -> float:
+def route_length_units(map_name: str, route_cam=None) -> float:
     rec = pycolmap.Reconstruction(str(ROOT / "maps" / map_name / "sparse" / "0"))
     order = sorted(rec.images.values(), key=lambda i: i.name)
+    if route_cam:  # риг-карта: длину меряем по ОДНОЙ камере, иначе зигзаг между 3 путями
+        order = [i for i in order if route_cam in i.name]
     P = np.array([(-i.cam_from_world().rotation.matrix().T @ i.cam_from_world().translation)
                   for i in order])
-    return float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
+    seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
+    # выбросы (кадры-«улетевшие» из-за плохой регистрации) раздувают длину — режем
+    seg = seg[seg < 10 * np.median(seg)]
+    return float(np.sum(seg))
 
 
 def main() -> int:
@@ -47,10 +52,11 @@ def main() -> int:
     ap.add_argument("--map", required=True)
     ap.add_argument("--log", required=True, help="encoder-log.jsonl")
     ap.add_argument("--save", action="store_true", help="записать scale.json в карту")
+    ap.add_argument("--route-cam", default=None, help="риг-карта: длина по одной камере, напр. _c2")
     args = ap.parse_args()
 
     dist_m = odometry_distance(Path(args.log))
-    arc_u = route_length_units(args.map)
+    arc_u = route_length_units(args.map, args.route_cam)
     if arc_u < 1e-6:
         print("длина маршрута ~0, карта пустая?")
         return 1
