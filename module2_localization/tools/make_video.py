@@ -11,8 +11,10 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
+sys.path.insert(0, str(ROOT))
 from localizer import AlikedLocalizer  # noqa: E402
 from route import Localizer  # noqa: E402
+import config as cfg  # noqa: E402  (module2_localization/config.py)
 
 
 def predict_path(loc, C, fwd, mode, steps=45, gain=0.4):
@@ -40,18 +42,22 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 PANE = 900
 VPANE = 1600
 TRAIL = 40
+MOVE_EPS = 0.06       # смещение (ед. карты) за окно chist ниже -> считаем, что стоим
 
 
-def build_canvas(rec, size):
-    o = sorted(rec.images.values(), key=lambda i: i.name)
-    P = np.array([(-i.cam_from_world().rotation.matrix().T @ i.cam_from_world().translation) for i in o])
-    nums = np.array([int("".join(filter(str.isdigit, i.name)) or 0) for i in o])
-    xyz = np.array([p.xyz for p in rec.points3D.values()])
-    lo, hi = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
+def build_canvas(loc, size):
+    # эталон — маршрут ЛОКАЛИЗАТОРА (уже отфильтрован: одна камера _c2 + без выбросов),
+    # тонкой линией. Раньше рисовались траектории всех 3 камер рига внахлёст -> толсто.
+    R = loc.route
+    xyz = np.array([p.xyz for p in loc.rec.points3D.values()])
+    lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
+    lo_p, hi_p = np.percentile(R[:, [0, 2]], [1, 99], axis=0)
+    lo = np.minimum(lo_c, lo_p)
+    hi = np.maximum(hi_c, hi_p)
     pad = int(size * 0.08)
 
     def px(p):
-        q = (np.atleast_2d(p) - lo) / (hi - lo)
+        q = (np.atleast_2d(p) - lo) / (hi - lo + 1e-9)
         return np.stack([pad + q[:, 0] * (size - 2 * pad),
                          size - pad - q[:, 1] * (size - 2 * pad)], 1).astype(int)
 
@@ -61,13 +67,13 @@ def build_canvas(rec, size):
     for x, y in pp[m]:
         cv2.circle(img, (x, y), 1, (70, 70, 70), -1)
 
-    tp = px(P[:, [0, 2]])
-    med = np.median(np.linalg.norm(np.diff(P, axis=0), axis=1))
-    for k in range(len(tp) - 1):
-        if np.linalg.norm(P[k + 1] - P[k]) < 30 * med and nums[k + 1] - nums[k] <= 2:
-            cv2.line(img, tuple(tp[k]), tuple(tp[k + 1]), (200, 170, 60), 3, cv2.LINE_AA)
-    cv2.circle(img, tuple(tp[0]), 10, (120, 230, 120), -1)
-    cv2.circle(img, tuple(tp[-1]), 10, (60, 60, 240), -1)
+    rp = px(R[:, [0, 2]])
+    med = np.median(np.linalg.norm(np.diff(R, axis=0), axis=1))
+    for k in range(len(rp) - 1):
+        if np.linalg.norm(R[k + 1] - R[k]) < 30 * med:
+            cv2.line(img, tuple(rp[k]), tuple(rp[k + 1]), (200, 170, 60), 2, cv2.LINE_AA)
+    cv2.circle(img, tuple(rp[0]), 8, (120, 230, 120), -1)
+    cv2.circle(img, tuple(rp[-1]), 8, (60, 60, 240), -1)
     return img, px
 
 
@@ -86,11 +92,14 @@ def main():
     ap.add_argument("--min-inlier-ratio", type=float, default=0.0,
                     help="F2: доля инлайеров (инлайеры/пары); ложные фиксы имеют низкую")
     ap.add_argument("--mode", default="pursuit", choices=["pursuit", "stanley"])
+    ap.add_argument("--route-cam", default=None, help="риг-карта: маршрут по одной камере, напр. _c2")
     args = ap.parse_args()
 
     loc = AlikedLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
-                          nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode)
-    canvas, px = build_canvas(loc.rec, PANE)
+                          nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
+                          route_cam=args.route_cam)
+    loc.deadzone = cfg.DEADZONE_DEG   # мёртвая зона азимута из конфига (иначе command берёт 4)
+    canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
 
     cap = cv2.VideoCapture(args.video)
@@ -103,6 +112,9 @@ def main():
 
     tmp = ROOT / "out" / "_frame.jpg"
     trail = deque(maxlen=TRAIL)
+    chist = deque(maxlen=5)        # история 3D-позиций для направления ДВИЖЕНИЯ (курс = скорость)
+    last_cmd = ("straight", 0.0)   # держим последнюю команду, когда стоим (на старте — прямо)
+    stopped = False                # латч: STOP прозвучал раз -> держим, команды не меняются
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []
@@ -128,7 +140,23 @@ def main():
         if good:
             ok_n += 1
             trail.append(px(r["C"][[0, 2]])[0])
+            chist.append(r["C"])
+            # команда r идёт из ПОЗЫ (locate -> command с r["fwd"]) — она ГЛАДКАЯ в движении.
+            # На МЕСТЕ поза дрожит, поэтому: едем -> берём свежую команду, стоим -> держим последнюю.
+            d = (chist[-1] - chist[0]) if len(chist) >= 2 else np.zeros(3)
+            moving = np.linalg.norm(d) > MOVE_EPS
+            if moving or last_cmd is None:
+                last_cmd = (r["move_type"], r["bearing_deg"])
+            else:
+                r["move_type"], r["bearing_deg"] = last_cmd
+            stopped = stopped or r["move_type"] == "stop"   # латч
+            if stopped:
+                r["move_type"], r["bearing_deg"] = "stop", 0.0
             last = r
+        elif stopped and last is not None:
+            r = dict(last)                                  # приехали, LOST у стены -> держим STOP
+            r["move_type"], r["bearing_deg"] = "stop", 0.0
+            good = True
 
         m = canvas.copy()
         for k in range(len(trail) - 1):
@@ -149,7 +177,8 @@ def main():
             pth = px(predict_path(loc, r["C"], r["fwd"], args.mode)[:, [0, 2]])
             for a2, b2 in zip(pth[:-1], pth[1:]):
                 cv2.line(m, tuple(a2), tuple(b2), (0, 255, 0), 2, cv2.LINE_AA)   # зелёная: предсказанная траектория
-            f2 = px((r["C"] + r["fwd"] * 0.6)[[0, 2]])[0]
+            head = r["fwd"] / (np.linalg.norm(r["fwd"]) + 1e-9)   # курс = поза (гладкая в движении)
+            f2 = px((r["C"] + head * 0.6)[[0, 2]])[0]
             cv2.arrowedLine(m, c, tuple(f2), (255, 255, 255), 3, cv2.LINE_AA, tipLength=0.35)
             cv2.circle(m, c, 11, (60, 60, 255), -1)
             cv2.circle(m, c, 11, (255, 255, 255), 2)
