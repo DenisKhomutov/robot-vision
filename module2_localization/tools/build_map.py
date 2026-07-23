@@ -95,8 +95,11 @@ def main():
     ap.add_argument("--pairs", default="vocab", choices=["vocab", "sequential", "exhaustive"])
     args = ap.parse_args()
 
+    sys.path.insert(0, str(ROOT / "core"))
+    from hub import use_local_weights
     from lightglue import ALIKED, LightGlue
     from lightglue.utils import load_image
+    use_local_weights()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     imdir = ROOT / "data" / args.images

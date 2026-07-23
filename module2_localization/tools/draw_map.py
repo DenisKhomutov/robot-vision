@@ -26,7 +26,12 @@ def main():
     nums = np.array([int("".join(filter(str.isdigit, i.name)) or 0) for i in o])
     xyz = np.array([p.xyz for p in r.points3D.values()])
 
-    lo, hi = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
+    # границы: union облака и траектории по ПЕРЦЕНТИЛЮ (робастно к кадрам-выбросам,
+    # которые улетают на тысячи единиц; концы маршрута при этом остаются видны)
+    lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
+    lo_p, hi_p = np.percentile(P[:, [0, 2]], [1, 99], axis=0)
+    lo = np.minimum(lo_c, lo_p)
+    hi = np.maximum(hi_c, hi_p)
     w = h = args.size
     pad = int(w * 0.064)
 
