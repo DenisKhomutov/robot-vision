@@ -20,19 +20,18 @@ DEADZONE_DEG = 4.0
 
 class AlikedLocalizer:
     def __init__(self, map_name="map_office_ref", device=None, kpts=2048, route_range=None,
-                 det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit", route_cam=None):
+                 det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit", route_cam=None,
+                 route_nodes=None):
         from hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
         self.max_error = max_error
-        self.steer = steer  # "pursuit" (упреждение) | "stanley"
-        self.route_cam = route_cam  # для риг-карт: маршрут только по кадрам этой камеры (напр. "_c2")
+        self.steer = steer  # "pursuit" | "stanley"
+        self.route_cam = route_cam
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
         self.rec = pycolmap.Reconstruction(str(work / "sparse" / "0"))
         self.cam = list(self.rec.cameras.values())[0]
-        # плотность ЗАПРОСА независима от карты: лишние точки, что не лягут, отбрасываются,
-        # а попавшие в сильные точки карты добавляют инлайеров. Карту это не трогает.
         self.ext = ALIKED(max_num_keypoints=kpts, detection_threshold=det_threshold,
                           nms_radius=nms_radius).eval().to(self.dev)
 
@@ -46,13 +45,11 @@ class AlikedLocalizer:
 
         by_name = {im.name: im for im in self.rec.images.values()}
         order = sorted(by_name)
-        if self.route_cam:  # риг-карта: маршрут по ОДНОЙ камере, иначе зигзаг между 3 путями
+        if self.route_cam:
             order = [n for n in order if self.route_cam in n]
         if route_range:
             a, b = route_range
             order = [n for n in order if a <= int("".join(filter(str.isdigit, n)) or 0) < b]
-        # выкидываем кадры-ВЫБРОСЫ (плохая регистрация: улетели далеко от обоих соседей).
-        # Иначе упреждающая цель может попасть на выброс -> команда «в бесконечность».
         pos = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
                          @ by_name[n].cam_from_world().translation) for n in order])
         if len(pos) > 5:
@@ -66,6 +63,9 @@ class AlikedLocalizer:
             if dropped:
                 print(f"[карта] выкинуто выбросов маршрута: {dropped}")
             order = [n for n, kp in zip(order, keep) if kp]
+        if route_nodes and len(order) > route_nodes:
+            print(f"[карта] маршрут обрезан: {len(order)} -> {route_nodes} узлов")
+            order = order[:route_nodes]
         self.route = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
                                 @ by_name[n].cam_from_world().translation) for n in order])
         self.route_fwd = np.array([by_name[n].cam_from_world().rotation.matrix().T
@@ -73,10 +73,9 @@ class AlikedLocalizer:
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
 
-    def locate(self, path, chunk=100000, exif_focal=None):
+    def locate(self, path, chunk=None, exif_focal=None):
         from lightglue.utils import load_image
         t0 = time.perf_counter()
-        # принимаем и путь (офлайн-инструменты), и BGR-кадр numpy (онлайн: WebRTC)
         if isinstance(path, np.ndarray):
             rgb = cv2.cvtColor(path, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
             im = torch.from_numpy(rgb.transpose(2, 0, 1)).to(self.dev)
@@ -90,6 +89,8 @@ class AlikedLocalizer:
 
         t0 = time.perf_counter()
         n = len(qk)
+        if chunk is None:
+            chunk = max(4096, int(256e6 / (4 * max(n, 1))))
         best = torch.full((n,), -1e9, device=self.dev)
         bown = torch.full((n,), -1, dtype=torch.long, device=self.dev)
         second = torch.full((n,), -1e9, device=self.dev)
@@ -134,7 +135,7 @@ class AlikedLocalizer:
             ropt.refine_extra_params = True
 
         eopt = pycolmap.AbsolutePoseEstimationOptions()
-        eopt.ransac.max_error = self.max_error  # порог репроекции инлайера, px (дефолт 12)
+        eopt.ransac.max_error = self.max_error
         t0 = time.perf_counter()
         res = pycolmap.estimate_and_refine_absolute_pose(
             p2d, p3d, cam, estimation_options=eopt, refinement_options=ropt)
