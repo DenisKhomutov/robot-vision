@@ -1,9 +1,3 @@
-"""Сервисный слой локализации: кадр -> поза на эталоне + команда контроллеру.
-
-Каркас. Пока localize() принимает ПУТЬ к кадру (как в офлайн-инструментах).
-Онлайн (WebRTC -> numpy-кадр, слияние с сегментацией, гейтинг по прошлой позе)
-нашивается позже — см. архитектуру в памяти проекта.
-"""
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,17 +22,16 @@ def get_localizer():
             nms_radius=config.QUERY_NMS_RADIUS,
             max_error=config.MAX_ERROR,
             route_cam=getattr(config, "ROUTE_CAM", None),
+            route_nodes=getattr(config, "ROUTE_NODES", None),
         )
     return _localizer
 
 
 def localize(frame) -> dict[str, Any]:
-    """frame -> команда. Возвращает valid=False, если позе нельзя доверять."""
     r = get_localizer().locate(frame)
     if not r or not r.get("ok") or r["inliers"] < config.MIN_INLIERS:
-        return {"valid": False, "reason": (r or {}).get("reason", "no fix")}
+        return {"move_type": "lost", "reason": (r or {}).get("reason", "no fix")}
     return {
-        "valid": True,
         "move_type": r["move_type"],
         "bearing_deg": r["bearing_deg"],
         "offset_m": r.get("offset_m"),

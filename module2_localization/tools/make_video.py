@@ -97,7 +97,7 @@ def main():
 
     loc = AlikedLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
-                          route_cam=args.route_cam)
+                          route_cam=args.route_cam, route_nodes=cfg.ROUTE_NODES)
     loc.deadzone = cfg.DEADZONE_DEG   # мёртвая зона азимута из конфига (иначе command берёт 4)
     canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
@@ -114,7 +114,10 @@ def main():
     trail = deque(maxlen=TRAIL)
     chist = deque(maxlen=5)        # история 3D-позиций для направления ДВИЖЕНИЯ (курс = скорость)
     last_cmd = ("straight", 0.0)   # держим последнюю команду, когда стоим (на старте — прямо)
-    stopped = False                # латч: STOP прозвучал раз -> держим, команды не меняются
+    stopped = False                # латч: конец маршрута подтверждён -> команды не меняются
+    stop_hits = 0
+    last_node = None
+    rejects = jumps = 0
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []
@@ -137,6 +140,19 @@ def main():
         ratio = r["inliers"] / max(r.get("n_pairs", 0), 1) if r["ok"] else 0.0
         good = (r["ok"] and r["inliers"] >= args.min_inliers
                 and ratio >= args.min_inlier_ratio)
+        if good and last_node is not None:   # та же отбраковка скачков, что в демоне
+            allowed = max(cfg.MIN_NODE_JUMP, int(cfg.MAX_NODES_PER_SEC * args.step / args.fps))
+            if r["node"] - last_node > allowed:
+                rejects += 1
+                if rejects < cfg.MAX_REJECTS:
+                    good = False
+                    jumps += 1
+                else:
+                    rejects = 0
+            else:
+                rejects = 0
+        if good:
+            last_node = r["node"]
         if good:
             ok_n += 1
             trail.append(px(r["C"][[0, 2]])[0])
@@ -149,7 +165,11 @@ def main():
                 last_cmd = (r["move_type"], r["bearing_deg"])
             else:
                 r["move_type"], r["bearing_deg"] = last_cmd
-            stopped = stopped or r["move_type"] == "stop"   # латч
+            if r["move_type"] == "stop" and r["inliers"] >= cfg.STOP_MIN_INLIERS:
+                stop_hits += 1
+            else:
+                stop_hits = 0
+            stopped = stopped or stop_hits >= cfg.STOP_CONFIRM
             if stopped:
                 r["move_type"], r["bearing_deg"] = "stop", 0.0
             last = r

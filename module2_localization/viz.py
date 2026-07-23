@@ -1,13 +1,6 @@
-"""Удалённая визуализация: окно с картой + живая позиция робота.
-
-Запускается НЕ на Jetson, а на машине оператора. Jetson лишь публикует команды в
-NATS; здесь подписываемся, держим копию карты и рисуем, где робот, сравнивая с эталоном.
-Так Jetson остаётся лёгким, а картинку видит оператор.
-
+"""
     uv run --no-sync python -m module2_localization.viz --map map_rec3 \
         --nats-url nats://<IP-джетсона>:4222
-
-Карта (папка maps/<name>) должна лежать и на этой машине.
 """
 import argparse
 import asyncio
@@ -29,11 +22,10 @@ def build(map_name):
     rec = pycolmap.Reconstruction(str(config.MAPS_DIR / map_name / "sparse" / "0"))
     order = sorted((im.name, im) for im in rec.images.values())
     rcam = getattr(config, "ROUTE_CAM", None)
-    if rcam:  # риг-карта: эталон по центральной камере
+    if rcam:
         order = [(n, im) for n, im in order if rcam in n]
     P = np.array([(-im.cam_from_world().rotation.matrix().T @ im.cam_from_world().translation)
                   for _, im in order])
-    # тот же фильтр выбросов, что в локализаторе (иначе узлы не совпадут)
     if len(P) > 5:
         seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
         thr = 10 * np.median(seg)
@@ -42,6 +34,9 @@ def build(map_name):
             if seg[k - 1] > thr and seg[k] > thr:
                 keep[k] = False
         P = P[keep]
+    rn = getattr(config, "ROUTE_NODES", None)
+    if rn:
+        P = P[:rn]
     xyz = np.array([p.xyz for p in rec.points3D.values()])
     lo, hi = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
     pad = int(SIZE * 0.08)
@@ -69,7 +64,6 @@ def build(map_name):
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--map", default=config.DEFAULT_MAP)
-    # viz на машине оператора -> по умолчанию цепляемся к NATS ноутбука-командира
     ap.add_argument("--nats-url", default=f"nats://{config.NATS_HOST}:4222")
     ap.add_argument("--topic", default=config.NATS_TOPIC)
     args = ap.parse_args()
@@ -94,7 +88,7 @@ async def main():
     while True:
         img = canvas.copy()
         c = latest["cmd"]
-        if c and c.get("valid") and c.get("node") is not None:
+        if c and c.get("move_type") != "lost" and c.get("node") is not None:
             node = min(max(c["node"], 0), n_nodes - 1)
             p = tuple(rp[node])
             j = min(node + config.LOOKAHEAD_NODES, n_nodes - 1)
