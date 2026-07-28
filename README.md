@@ -1,187 +1,247 @@
 # Robot Vision
 
-Микросервис компьютерного зрения для робота-доставщика. Основные модули:
+Компьютерное зрение для робота-доставщика. Три модуля:
 
-- **Модуль 1 — распознавание светофоров** (`module1_traffic_light`)
-- **Модуль 2 — локализация** (`module2_localization`) — DINOv2 + Qdrant + XFeat
-- **Модуль 3 — сегментация дорожного покрытия** (`module3_segmentation`)
+- **Модуль 1 — светофоры** (`module1_traffic_light`): детектор + классификатор.
+- **Модуль 2 — локализация** (`module2_localization`): ALIKED + 3D-карта маршрута,
+  выдаёт команды рулю. Единственный, у которого сейчас есть боевой демон.
+- **Модуль 3 — сегментация покрытия** (`module3_segmentation`).
 
-Эксперименты: `experiment/` (офисный BEV, оценка поворота), `3D_VPR_exp/` (локализация по 3D-карте маршрута).
+Ни FastAPI, ни Qdrant, ни WebRTC не используются: кадры берутся локально из сокета
+камеры (GStreamer), команды уходят в NATS.
 
-## Установка
+## Как это работает
 
-```bash
-cp .env.example .env      # заполнить значения
-./tools/sync.sh           # одна команда: сама определит GPU и поставит нужный torch
+```
+камера -> fan-out (tee -> shmsink) -> демон локализации -> NATS -> мозг робота
+                                                              \-> viz оператора
 ```
 
-`sync.sh` смотрит `nvidia-smi` и выбирает сборку torch. Если надо задать явно:
+Демон читает кадр, ищет позу в 3D-карте маршрута (ALIKED + PnP через OpenCV), считает команду
+и публикует её в топик `robot.vision.localization`. Топик слушают двое: контроллер
+робота и окно визуализации на машине оператора — NATS раздаёт копию каждому.
 
-```bash
-uv sync --extra cpu       # машина без GPU
-uv sync --extra cu126     # машина с NVIDIA GPU
+### Формат сообщений
+
+Едем:
+```json
+{"move_type": "straight", "deg": 1.58, "offset": -0.0017, "dist_to_route": 0.0043,
+ "offset_m": -0.002, "dist_to_route_m": 0.006, "node": 263, "inliers": 378,
+ "ts": 1784804951.819}
 ```
 
-Автоматически по железу uv выбирать не умеет — маркеры в `pyproject.toml` статические
-(платформа, версия Python), «есть ли видеокарта» среди них нет. Поэтому torch вынесен
-в два конфликтующих extra, а `sync.sh` — обёртка, которая подставляет нужный.
-
-Проверить, что встало правильно:
-
-```bash
-.venv/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+Потерялись (позы нет — ехать нельзя):
+```json
+{"move_type": "lost", "node": 301, "reason": "inliers: 5", "ts": 1784804967.926}
 ```
 
-Версия должна оканчиваться на `+cu126` при наличии GPU и на `+cpu` при отсутствии.
-Несовпадение = torch считает на процессоре, молча. `sync.sh` эту сверку делает сам
-и ругается, если сборка не совпала с железом.
+Приехали (латч, до перезапуска демона не сбрасывается):
+```json
+{"move_type": "stop", "node": 309, "ts": 1784804969.4}
+```
 
-### Ловушка: голый `uv run` ломает torch
+| поле | смысл |
+|---|---|
+| `move_type` | `left` / `right` / `straight` / `stop` / `lost` |
+| `deg` | азимут на цель; минус — влево, плюс — вправо |
+| `offset`, `offset_m` | боковое смещение от эталона со знаком |
+| `dist_to_route`, `_m` | расстояние до маршрута, всегда положительное |
+| `node` | номер узла эталона — где мы на маршруте |
+| `inliers` | сколько точек подтвердили позу |
+| `ts` | время публикации; **по нему потребитель ведёт сторожевой таймер** |
+
+Молчание в топике — это не «продолжай ехать». NATS доставляет максимум один раз и
+без буфера, поэтому контроллер обязан тормозить, если сообщений нет дольше таймаута:
+только так покрываются падение демона, обрыв сети и зависание Jetson.
+
+## Установка (машина разработки)
+
+```bash
+./tools/sync.sh            # сам определит GPU и поставит нужную сборку torch
+```
+
+Явно, если нужно:
+
+```bash
+uv sync --extra cpu        # без GPU
+uv sync --extra cu126      # с NVIDIA GPU
+```
+
+Проверка, что torch встал правильно (иначе будет молча считать на процессоре):
+
+```bash
+uv run --no-sync python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Веса ALIKED и LightGlue лежат в `module2_localization/weights/` и подключаются
+автоматически ([core/hub.py](module2_localization/core/hub.py)) — сеть при запуске не нужна.
+
+### Ловушка: `uv run` без `--no-sync`
 
 ```bash
 uv run python script.py            # ПЛОХО: пересинхронизирует и подменит torch
-uv run --no-sync python script.py  # хорошо (или UV_NO_SYNC=1)
+uv run --no-sync python script.py  # хорошо
 .venv/bin/python script.py         # хорошо
 ```
 
-`uv run` перед запуском синхронизирует окружение. Раз torch вынесен в extras, в базовых
-зависимостях его нет — но его требуют `ultralytics` (`torch>=1.8.0`) и `kornia`
-(`torch>=2.0.0`). Не видя extra, uv тянет torch транзитивно **с обычного PyPI**, затирая
-выбранную сборку. Молча. На ноутбуке это особенно обидно: приедет CUDA-вариант
-с ~2.5 ГБ пакетов `nvidia-*` на машину без видеокарты.
+Torch вынесен в конфликтующие extra (`cpu` / `cu126`), потому что uv не умеет выбирать
+сборку по наличию GPU — маркеры в `pyproject.toml` статические. Не видя extra, uv тянет
+torch транзитивно с обычного PyPI и затирает выбранную сборку. Молча.
 
-Окружение меняется только через `./tools/sync.sh`. Всё остальное — с `--no-sync`.
+## Запуск
 
-**Jetson идёт мимо этого.** У него `Dockerfile.jetson` на образе `dustynv/pytorch` (ARM64,
-L4T), где torch уже собран под общую память Jetson. Обычные колёса с download.pytorch.org
-там не работают. `uv sync` в том образе не запускается — пакеты ставятся через `pip3`,
-поэтому список зависимостей в `Dockerfile.jetson` надо править руками при изменении
-зависимостей проекта.
-
-Веса моделей положить в `./weights`: `best_det.pt`, `best_cls.pt`, `best_seg.pt`.
-
-## 3D-карта маршрута (3D_VPR_exp)
-
-Нужны `colmap` и `glomap` в системе — собираются из исходников, см. `3D_VPR_exp/README.md`.
-Проверить: `colmap -h | head -2` (должно быть `with CUDA`, не `without`), `glomap -h`.
+Брокер (на той машине, где работает демон):
 
 ```bash
-# нарезка + SIFT + sequential_matcher + GLOMAP
-uv run --no-sync python 3D_VPR_exp/scripts/build_map.py --video july --fps 6 --overlap 25 --out july6
+docker run -d --name nats -p 4222:4222 --restart unless-stopped nats:latest
 ```
 
-| флаг | смысл |
+Демон — кадры из сокета камеры (боевой режим):
+
+```bash
+uv run --no-sync python -m module2_localization.service --shm
+```
+
+Демон — по видеофайлу (отладка, без камеры и без NATS):
+
+```bash
+uv run --no-sync python -m module2_localization.service \
+    --video module2_localization/map_for_office/rec3/camera-2.mkv \
+    --source-step 20 --no-nats
+```
+
+Визуализация — на машине оператора, не на роботе:
+
+```bash
+uv run --no-sync python -m module2_localization.viz --map map_rig3
+```
+
+Адрес брокера берётся из `NATS_HOST` в [config.py](module2_localization/config.py); выход — Esc.
+
+## Инструменты
+
+Нужны `colmap` и `glomap` в системе (собираются из исходников, CUDA-сборка).
+Проверить: `colmap -h | head -2`, `glomap -h`.
+
+```bash
+# карта из одной камеры
+uv run --no-sync python module2_localization/tools/build_map.py --images <папка> --tag map_new
+
+# карта из 3-камерного рига (кадры синхронны, имена {время}_c{N}.jpg)
+uv run --no-sync python module2_localization/tools/build_map_rig.py \
+    --videos rec3/camera-1.mkv rec3/camera-2.mkv rec3/camera-3.mkv --tag map_rig3
+
+# экспорт карты для рантайма (после сборки карты — обязательно)
+uv run --no-sync python module2_localization/tools/export_map.py --map map_rig3
+
+# метрический масштаб карты из одометрии
+uv run --no-sync python module2_localization/tools/scale_from_odometry.py \
+    --map map_rig3 --log rec3/encoder-log.jsonl
+
+# картинка карты и видео-самотест (карта + кадр + позиция + команда)
+uv run --no-sync python module2_localization/tools/draw_map.py --map map_rig3
+uv run --no-sync python module2_localization/tools/make_video.py <видео> \
+    --map map_rig3 --route-cam _c2 --step 10 --kpts 8192 --q-threshold 0.05
+
+# посмотреть карту в COLMAP
+colmap gui --import_path module2_localization/maps/map_rig3/sparse/0
+```
+
+Демон и отрисовщик считают команду одним кодом ([core/pilot.py](module2_localization/core/pilot.py)),
+поэтому видео показывает ровно то, что уйдёт роботу.
+
+## Деплой на Jetson (Orin Nano 8 ГБ, JetPack 6 / Ubuntu 22.04)
+
+Кадры приходят из ветки `tee` fan-out-сервиса камеры. Разрешение нашей ветки —
+**1280×720**, как у кадров, из которых собрана карта: при совпадении используется
+откалиброванная камера карты, иначе фокус угадывается и точность падает.
+
+Сокет и размеры — в [config.py](module2_localization/config.py) (`CAM_SHM_SOCKET`, `CAM_WIDTH`,
+`CAM_HEIGHT`). Они обязаны совпадать с caps, которые подаются в `shmsink`: через
+разделяемую память едут голые байты без описания формата, и расхождение даст мусор
+без единой ошибки.
+
+Проверить источник до запуска демона:
+
+```bash
+gst-inspect-1.0 shmsrc
+gst-launch-1.0 shmsrc socket-path=/tmp/cam_raw ! \
+  video/x-raw,format=I420,width=1280,height=720,framerate=30/1 ! \
+  videoconvert ! fakesink -v
+```
+
+### Вариант 1: контейнер
+
+```bash
+docker compose -f docker-compose.jetson.yml build
+docker compose -f docker-compose.jetson.yml up -d
+docker compose -f docker-compose.jetson.yml logs -f localization
+docker compose -f docker-compose.jetson.yml down
+```
+
+`network_mode: host` — чтобы демон видел локальный NATS, а viz оператора цеплялся
+снаружи. `ipc: host` и монтирование `/tmp` — чтобы `shmsrc` добрался до разделяемой
+памяти fan-out. Без них сокет откроется, а кадры не придут.
+
+### Вариант 2: systemd, без контейнера
+
+Torch и OpenCV на Jetson берутся из JetPack, `uv sync` здесь не применяется —
+недостающие пакеты ставятся `pip3` поверх системных. Компилировать нечего:
+`pycolmap` в рантайме не нужен, карта читается из `runtime.npz`.
+
+```bash
+rsync -a --exclude .venv --exclude .git <ноутбук>:~/projects/robot-vision/ ~/projects/robot-vision/
+cd ~/projects/robot-vision
+pip3 install "nats-py>=2.6.0" kornia loguru
+pip3 install --no-deps "lightglue @ git+https://github.com/cvg/LightGlue.git"
+sudo cp tools/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now robot-vision-localization
+journalctl -u robot-vision-localization -f
+```
+
+Юнит зависит от `camera-fanout.service`: демон стартует после того, как появились кадры.
+
+### Что везти на робота
+
+Рантайму нужны только `config.py`, `service.py`, `nats_client.py`, `core/`, `services/`,
+`weights/aliked-n16.pth` и карта — файлы `runtime.npz`, `aliked_bank.npz`, `scale.json`,
+около 110 МБ. Папка `sparse/0`, `database.db` и `pairs.txt` нужны только при сборке карты
+и на робота не едут. Из пакетов на роботе: numpy, opencv, torch (из JetPack),
+lightglue, kornia, nats-py, loguru — ничего компилировать не требуется.
+
+## Настройки
+
+Всё в [module2_localization/config.py](module2_localization/config.py). Значимое:
+
+| параметр | смысл |
 |---|---|
-| `--video` | `july` или `june` (пути зашиты в `VIDEOS` в скрипте) |
-| `--fps` | частота нарезки. 3 fps = шаг ~0.5 м при ходьбе; на поворотах мало, отсюда 6 |
-| `--overlap` | сколько следующих кадров сопоставлять с каждым. Растит время нелинейно |
-| `--out` | папка результата. **Задавать всегда**, иначе затрёт предыдущую карту |
-| `--extract-only` | только нарезка, без SfM — проверить, что видео читается |
-| `--skip-extract` | пропустить нарезку, гнать SfM по готовым кадрам |
-
-Результат: `3D_VPR_exp/maps/<out>/sparse/0` + `database.db`, кадры в `3D_VPR_exp/data/<out>`.
-
-Смотреть:
-
-```bash
-colmap gui --import_path 3D_VPR_exp/maps/july6/sparse/0 \
-           --database_path 3D_VPR_exp/maps/july6/database.db \
-           --image_path 3D_VPR_exp/data/july6
-```
-
-**На что смотреть в выводе:** сколько кадров зарегистрировано из общего числа и средняя
-ошибка репроекции. Ориентир от прогона `july` (3 fps, overlap 10, ~14 мин): 443/486 = 91%,
-0.587 px, одна модель. Не сошёлся хвост 443-485 — там разворот на пандусе, при 3 fps
-соседние кадры после поворота перестают перекрываться.
+| `DEFAULT_MAP`, `ROUTE_CAM` | какая карта и по какой камере рига строится эталон |
+| `ROUTE_NODES` | обрезка маршрута: хвост карты у стены разваливается |
+| `MIN_INLIERS` | ниже — позе не верим, уходим в `lost` |
+| `MAX_NODES_PER_SEC`, `MIN_NODE_JUMP` | отбраковка скачков вперёд; назад не ограничено |
+| `MAX_REJECTS` | столько отказов подряд — верим кадру (защита от вечного `lost`) |
+| `STOP_CONFIRM`, `STOP_MIN_INLIERS` | подтверждение конца маршрута перед латчем |
+| `LOOKAHEAD_NODES`, `DEADZONE_DEG` | упреждение и мёртвая зона азимута |
+| `NATS_HOST`, `NATS_URL`, `NATS_TOPIC` | куда публикуем и куда цепляется viz |
 
 ## Линтеры и типы
 
 ```bash
-# Проверка форматирования
-uv run --group dev ruff format --check .
-
-# Проверка стиля и ошибок
 uv run --group dev ruff check .
-
-# Автоисправление
 uv run --group dev ruff check --fix .
-
-# Проверка типов
 uv run --group dev mypy --config-file pyproject.toml \
-    app/ module1_traffic_light/ module2_localization/ module3_segmentation/ tools/
+    module1_traffic_light/ module2_localization/ module3_segmentation/
 ```
 
-## Запуск Docker
+## Ограничения, о которых надо помнить
 
-```bash
-docker compose up --build
+**Зрению нужна фактура.** Голая стена, стекло, темнота — признаков нет, позы нет.
+Это физика метода, а не баг: на конце офисного маршрута локализация разваливается,
+поэтому маршрут обрезан до `ROUTE_NODES`. На улице фактуры больше, но иммунитета нет.
+Лечится только вторым датчиком — счислением по одометрии.
 
-docker compose -f docker-compose.jetson.yml up --build
+**Оценка точности завышена.** 93% узнавания получены на той же записи, из которой
+построена карта. Честная цифра появится только на втором проезде другой записью.
 
-# токен и URL берутся из .env (CAMERA_URL, CAMERA_TOKEN) — не хардкодить их здесь
-source .env && curl -X POST "$CAMERA_URL" \
-  -H "X-Capture-Token: $CAMERA_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"request_id": "test-1"}'
-
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-## Основные команды Docker
-
-```bash
-# запустить все сервисы (qdrant + api) с пересборкой
-docker compose up --build
-
-# в фоне (терминал свободен)
-docker compose up --build -d
-
-# конкретный compose-файл (Jetson)
-docker compose -f docker-compose.jetson.yml up --build -d
-
-# логи сервиса в реальном времени
-docker compose logs -f localization_api
-
-# статус контейнеров (запущены, порты)
-docker compose ps
-
-# остановить и удалить контейнеры (тома и образы остаются)
-docker compose down
-
-# остановить и удалить + тома (снесёт базу qdrant и кэш модели)
-docker compose down -v
-
-# перезапустить без пересборки
-docker compose restart
-
-# зайти внутрь работающего контейнера (отладка)
-docker compose exec localization_api bash
-
-# список образов / контейнеров / томов
-docker images
-docker ps -a
-docker volume ls
-
-# сколько места занято
-docker system df
-
-# нагрузка контейнеров в реальном времени (CPU/память)
-docker stats
-```
-
-## Очистка кэша Docker
-
-```bash
-# кэш сборки (build cache, cache mounts)
-docker builder prune -f
-
-# остановленные контейнеры, неиспользуемые сети, висячие образы
-docker system prune -f
-
-# то же + все неиспользуемые образы
-docker system prune -a -f
-
-# ОСТОРОЖНО: + тома (снесёт qdrant_storage и кэш модели)
-docker system prune -a --volumes -f
-```
-
+**Латч `stop` не сбрасывается.** Повторный проезд требует перезапуска демона.

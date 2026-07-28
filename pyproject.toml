@@ -9,7 +9,6 @@ dependencies = [
     "opencv-python",
     "ultralytics",
     "loguru>=0.7.3",
-    "python-dotenv>=1.0.0",
     "kornia>=0.8.2",
     "pycolmap>=4.1.0",
     "nats-py>=2.6.0",

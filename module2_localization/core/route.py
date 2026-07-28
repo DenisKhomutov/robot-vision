@@ -7,7 +7,6 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, ExifTags
-import pycolmap
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +26,7 @@ STOP_END_NODES = 3    # ближайший узел в этих последни
 
 class Localizer:
     def __init__(self, map_name, device=None, route_range=None):
+        import pycolmap
         work = ROOT / "maps" / map_name
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.rec = pycolmap.Reconstruction(str(work / "sparse" / "0"))
@@ -139,6 +139,7 @@ class Localizer:
 
         # запрос может быть снят другой камерой (иное разрешение/пропорции), чем карта:
         # заводим свою камеру с грубым фокусом и разрешаем PnP его уточнить
+        import pycolmap
         h_img, w_img = img.shape[:2]
         if (w_img, h_img) == (self.cam.width, self.cam.height):
             cam, ropt = self.cam, pycolmap.AbsolutePoseRefinementOptions()
@@ -194,11 +195,16 @@ class Localizer:
                                         np.dot(f_flat, t_flat)))
             ang = psi + np.degrees(np.arctan(-stanley_k * e))
         else:
-            # pure pursuit с АДАПТИВНЫМ упреждением: дальше от линии -> короче упреждение
-            # -> резче возврат; на линии упреждение полное -> плавно, без рыскания
-            la = int(np.clip(lookahead_nodes - LOOKAHEAD_ADAPT * abs(e),
-                             LOOKAHEAD_MIN, lookahead_nodes))
-            j = min(k + la, len(self.route) - 1)
+            # pure pursuit, упреждение в ДЛИНЕ ДУГИ (не в узлах — те в поворотах гуще).
+            # дальше от линии -> короче упреждение -> резче возврат; на линии -> плавно
+            step = getattr(self, "node_step", 1.0)
+            want = max(lookahead_nodes - LOOKAHEAD_ADAPT * abs(e), LOOKAHEAD_MIN) * step
+            cum = getattr(self, "route_cum", None)
+            if cum is not None:
+                j = int(np.searchsorted(cum, cum[k] + want))
+                j = min(j, len(self.route) - 1)
+            else:
+                j = min(k + int(lookahead_nodes), len(self.route) - 1)
             to = self.route[j] - C
             to_flat = to - np.dot(to, down) * down
             ang = np.degrees(np.arctan2(np.dot(np.cross(f_flat, to_flat), down),

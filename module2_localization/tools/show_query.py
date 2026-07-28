@@ -25,7 +25,7 @@ def main():
     args = ap.parse_args()
 
     loc = AlikedLocalizer(args.map)
-    xyz = np.array([p.xyz for p in loc.rec.points3D.values()])
+    xyz = loc.points
     R = loc.route
     lo, hi = np.percentile(np.vstack([xyz[:, [0, 2]], R[:, [0, 2]]]), [1, 99], axis=0)
     pad = int(args.size * 0.07)

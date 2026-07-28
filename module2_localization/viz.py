@@ -8,7 +8,6 @@ import json
 
 import cv2
 import numpy as np
-import pycolmap
 
 from . import config
 from .nats_client import NatsClient
@@ -19,13 +18,13 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 def build(map_name):
     """Канва (облако + эталонная линия) и функция проекции + позиции узлов маршрута."""
-    rec = pycolmap.Reconstruction(str(config.MAPS_DIR / map_name / "sparse" / "0"))
-    order = sorted((im.name, im) for im in rec.images.values())
+    m = np.load(config.MAPS_DIR / map_name / "runtime.npz")
+    pos = dict(zip(m["names"].tolist(), m["pos"]))
+    order = sorted(pos)
     rcam = getattr(config, "ROUTE_CAM", None)
     if rcam:
-        order = [(n, im) for n, im in order if rcam in n]
-    P = np.array([(-im.cam_from_world().rotation.matrix().T @ im.cam_from_world().translation)
-                  for _, im in order])
+        order = [n for n in order if rcam in n]
+    P = np.array([pos[n] for n in order])
     if len(P) > 5:
         seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
         thr = 10 * np.median(seg)
@@ -37,7 +36,7 @@ def build(map_name):
     rn = getattr(config, "ROUTE_NODES", None)
     if rn:
         P = P[:rn]
-    xyz = np.array([p.xyz for p in rec.points3D.values()])
+    xyz = m["points"]
     lo, hi = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
     pad = int(SIZE * 0.08)
 
@@ -58,7 +57,7 @@ def build(map_name):
             cv2.line(canvas, tuple(rp[k]), tuple(rp[k + 1]), (200, 170, 60), 2, cv2.LINE_AA)
     cv2.circle(canvas, tuple(rp[0]), 8, (120, 230, 120), -1)
     cv2.circle(canvas, tuple(rp[-1]), 8, (60, 60, 240), -1)
-    return canvas, rp
+    return canvas, rp, px
 
 
 async def main():
@@ -68,7 +67,7 @@ async def main():
     ap.add_argument("--topic", default=config.NATS_TOPIC)
     args = ap.parse_args()
 
-    canvas, rp = build(args.map)
+    canvas, rp, px = build(args.map)
     n_nodes = len(rp)
     latest = {"cmd": None}
 
@@ -90,11 +89,20 @@ async def main():
         c = latest["cmd"]
         if c and c.get("move_type") != "lost" and c.get("node") is not None:
             node = min(max(c["node"], 0), n_nodes - 1)
-            p = tuple(rp[node])
             j = min(node + config.LOOKAHEAD_NODES, n_nodes - 1)
             col = {"left": (60, 200, 255), "right": (60, 200, 255),
                    "stop": (60, 60, 240)}.get(c["move_type"], (80, 255, 80))
-            cv2.arrowedLine(img, p, tuple(rp[j]), (0, 235, 235), 2, cv2.LINE_AA, tipLength=0.3)
+            # реальная позиция со сносом вбок; узел — запасной вариант, если pos нет
+            if c.get("pos") is not None:
+                p = tuple(px(c["pos"])[0])
+                cv2.line(img, p, tuple(rp[node]), (90, 90, 90), 1, cv2.LINE_AA)  # снос до линии
+                h = c.get("head")
+                if h is not None:
+                    hp = px([c["pos"][0] + h[0] * 0.5, c["pos"][1] + h[1] * 0.5])[0]
+                    cv2.arrowedLine(img, p, tuple(hp), (0, 235, 235), 2, cv2.LINE_AA, tipLength=0.3)
+            else:
+                p = tuple(rp[node])
+                cv2.arrowedLine(img, p, tuple(rp[j]), (0, 235, 235), 2, cv2.LINE_AA, tipLength=0.3)
             cv2.circle(img, p, 9, (60, 60, 255), -1)
             cv2.circle(img, p, 9, (255, 255, 255), 2)
             dm = c.get("dist_to_route_m")
