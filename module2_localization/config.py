@@ -6,7 +6,7 @@ MAPS_DIR = _MODULE_ROOT / "maps"
 DEFAULT_MAP = "map_back_720"   # задняя камера, петля замкнута
 ROUTE_CAM = None            # одиночная карта (не риг): маршрут по всем кадрам
 
-QUERY_KPTS = 8192            # потолок точек ALIKED
+QUERY_KPTS = 1024            # потолок точек ALIKED
 QUERY_DET_THRESHOLD = 0.05   
 QUERY_NMS_RADIUS = 2
 MAX_ERROR = 12.0             
