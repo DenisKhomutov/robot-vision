@@ -6,7 +6,6 @@ import shutil
 import signal
 import subprocess
 import threading
-import time
 
 import cv2
 import numpy as np
@@ -163,6 +162,7 @@ class VideoFileSource:
 async def worker(src, nc, topic: str, loc, stop_evt=None) -> None:
     loc.steer = config.STEER_MODE
     loc.deadzone = config.DEADZONE_DEG
+    loc.stop_end_nodes = config.STOP_END_NODES
     pilot = Pilot(config)
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):

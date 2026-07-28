@@ -6,7 +6,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
@@ -103,6 +102,7 @@ def main():
                           route_nodes=args.route_nodes if args.route_nodes is not None else cfg.ROUTE_NODES,
                           back_facing=args.back)
     loc.deadzone = cfg.DEADZONE_DEG   # мёртвая зона азимута из конфига (иначе command берёт 4)
+    loc.stop_end_nodes = getattr(cfg, "STOP_END_NODES", 3)
     canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
 

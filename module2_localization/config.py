@@ -1,9 +1,9 @@
 from pathlib import Path
 
-_MODULE_ROOT = Path(__file__).resolve().parent
-MAPS_DIR = _MODULE_ROOT / "maps"
+_MODULE_ROOT = Path(__file__).resolve().parent      # путь до модуля
+MAPS_DIR = _MODULE_ROOT / "maps"                    # путь до карт
 
-DEFAULT_MAP = "map_back_720"   # задняя камера, петля замкнута
+DEFAULT_MAP = "map_back_720"                        # карта задней камеры, поляна 
 ROUTE_CAM = None            # одиночная карта (не риг): маршрут по всем кадрам
 
 QUERY_KPTS = 1024            # потолок точек ALIKED
@@ -23,9 +23,10 @@ MAX_REJECTS = 5              # столько отказов подряд -> в�
 
 STOP_CONFIRM = 3             # столько кадров подряд про конец маршрута -> латч STOP
 STOP_MIN_INLIERS = 40        # и не меньше стольких инлайеров в каждом
+STOP_END_NODES = 8           # ближайший узел в этих последних узлах -> stop (у петли поза дрожит)
 
-LOOKAHEAD_NODES = 12         # упреждение цели в узлах эталона
-DEADZONE_DEG = 4.0           # азимут меньше -> straight
+LOOKAHEAD_NODES = 8         # упреждение цели в узлах эталона
+DEADZONE_DEG = 1.0           # азимут меньше -> straight
 STEER_MODE = "pursuit"       # "pursuit" | "stanley"
 
 NATS_HOST = "192.168.40.48"
@@ -37,7 +38,7 @@ CAMERA = "0"
 CAMERA_BACK = True          # задняя камера: "вперёд робота" = -оптическая ось (карта map_back_loop)
 
 # сокет камеры; РАЗРЕШЕНИЕ обязано совпадать с картой (map_back_loop собрана в 1920x1080)
-CAM_SHM_SOCKET = "/tmp/cam_back"
+CAM_SHM_SOCKET = "/tmp/cam_raw"
 CAM_WIDTH = 1280
 CAM_HEIGHT = 720
 CAM_FPS = 30

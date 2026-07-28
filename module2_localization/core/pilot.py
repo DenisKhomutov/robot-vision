@@ -18,6 +18,7 @@ def to_command(r, min_inliers):
         "offset_m": round(om, 3) if om is not None else None,
         "dist_to_route_m": round(dm, 3) if dm is not None else None,
         "node": r["node"],
+        "target_node": r.get("target_node", r["node"]),
         "inliers": r["inliers"],
     }
     C, fwd = r.get("C"), r.get("fwd")
@@ -40,6 +41,7 @@ class Pilot:
         self.rejects = 0
         self.accepted = False
         self.jump = None
+        self.moved_once = False   # до первого движения команду НЕ держим -> мозг видит доворот
 
     def step(self, r, now=None):
         cfg = self.cfg
@@ -64,8 +66,9 @@ class Pilot:
             self.chist.append(r["C"])
             d = (self.chist[-1] - self.chist[0]) if len(self.chist) >= 2 else np.zeros(3)
             if float(np.linalg.norm(d)) > cfg.MOVE_EPS:
+                self.moved_once = True
                 self.last_cmd = (r["move_type"], r["bearing_deg"])
-            else:
+            elif self.moved_once:   # держим последнюю ТОЛЬКО после старта (гасим дрожь на остановках)
                 r["move_type"], r["bearing_deg"] = self.last_cmd
             if r["move_type"] == "stop" and r["inliers"] >= cfg.STOP_MIN_INLIERS:
                 self.stop_hits += 1
