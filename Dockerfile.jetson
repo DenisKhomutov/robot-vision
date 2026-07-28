@@ -2,19 +2,26 @@ FROM dustynv/pytorch:2.7-r36.4.0
 
 ENV PYTHONUNBUFFERED=1
 
+# gstreamer нужен для кадров из ветки fan-out (shmsrc -> pipe); shmsrc живёт в plugins-bad
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gstreamer1.0-tools gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+    && rm -rf /var/lib/apt/lists/*
+
+# torch/torchvision/opencv в базовом образе уже собраны под L4T — их не трогаем.
+# lightglue ставим без зависимостей: иначе pip подтянет своё opencv-python
+# и перекроет системное, собранное с CUDA и GStreamer.
+RUN pip3 install --no-cache-dir "nats-py>=2.6.0" kornia loguru \
+ && pip3 install --no-cache-dir --no-deps "lightglue @ git+https://github.com/cvg/LightGlue.git"
+
 WORKDIR /app
 
-RUN pip3 install --no-cache-dir --index-url https://pypi.org/simple \
-    "qdrant-client[fastembed]" \
-    "fastapi>=0.100.0" \
-    "uvicorn[standard]" \
-    python-multipart \
-    python-dotenv \
-    loguru \
-    httpx \
-    ultralytics
+COPY module2_localization/__init__.py module2_localization/config.py \
+     module2_localization/service.py module2_localization/nats_client.py \
+     ./module2_localization/
+COPY module2_localization/core/ ./module2_localization/core/
+COPY module2_localization/services/ ./module2_localization/services/
+COPY module2_localization/weights/ ./module2_localization/weights/
+COPY module2_localization/maps/ ./module2_localization/maps/
 
-COPY module2_localization/ ./module2_localization/
-COPY module1_traffic_light/ ./module1_traffic_light/
-COPY module3_segmentation/ ./module3_segmentation/
-COPY app/ ./app/
+CMD ["python3", "-m", "module2_localization.service", "--shm"]

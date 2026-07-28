@@ -92,7 +92,10 @@ def main():
                     "ниже -> больше (более слабых) точек. 0.05 ~= x1.8, 0.02 ~= x2.5")
     ap.add_argument("--overlap", type=int, default=10, help="последовательные пары ±N")
     ap.add_argument("--neighbors", type=int, default=20, help="соседей на кадр в словаре")
-    ap.add_argument("--pairs", default="vocab", choices=["vocab", "sequential", "exhaustive"])
+    ap.add_argument("--pairs", default="vocab",
+                    choices=["vocab", "sequential", "exhaustive", "loop"])
+    ap.add_argument("--loop-head", type=int, default=25, help="loop: первых кадров у старта")
+    ap.add_argument("--loop-tail", type=int, default=25, help="loop: последних кадров у финиша")
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
@@ -128,6 +131,14 @@ def main():
         pairs = [tuple(sorted((names[i], names[j]))) for i in range(len(names))
                  for j in range(i + 1, len(names))]
         log(f"пар всего {len(pairs)} (exhaustive)")
+    elif args.pairs == "loop":
+        # хвост↔голова: робот вернулся в старт, последние кадры видят те же места, что первые
+        h, t = min(args.loop_head, len(names)), min(args.loop_tail, len(names))
+        loops = {tuple(sorted((names[i], names[len(names) - 1 - j])))
+                 for i in range(h) for j in range(t)}
+        loops -= seq
+        pairs = sorted(seq | loops)
+        log(f"пар всего {len(pairs)} (послед. {len(seq)}, петлевых {len(loops)})")
     else:
         pairs = sorted(seq)
         log(f"пар всего {len(pairs)} (последовательные)")

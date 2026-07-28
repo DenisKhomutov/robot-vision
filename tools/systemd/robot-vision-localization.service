@@ -1,0 +1,21 @@
+# Установка:
+#   sudo cp tools/systemd/*.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now robot-vision-localization
+#   journalctl -u robot-vision-localization -f
+
+[Unit]
+Description=Robot vision: localization daemon (shm -> NATS)
+# камера должна отдавать кадры раньше, чем мы к ним подключимся
+After=network.target camera-fanout.service
+Requires=camera-fanout.service
+
+[Service]
+WorkingDirectory=/home/jetson/robot-vision
+ExecStart=/usr/bin/python3 -m module2_localization.service --shm
+Restart=always
+RestartSec=3
+User=jetson
+
+[Install]
+WantedBy=multi-user.target

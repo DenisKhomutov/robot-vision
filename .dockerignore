@@ -1,7 +1,21 @@
 .venv/
-qdrant_storage/
-data/photo/
+.git/
 __pycache__/
 *.pyc
+.env
 .env.local
-.git/
+
+# данные и инструменты разработки: в образ не едут
+data/
+yolo_train/
+module1_traffic_light/
+module3_segmentation/
+module2_localization/data/
+module2_localization/out/
+module2_localization/map_for_office/
+module2_localization/tools/
+module2_localization/viz.py
+
+# из карты рантайму нужны только sparse/0, aliked_bank.npz и scale.json
+module2_localization/maps/**/database.db
+module2_localization/maps/**/pairs.txt

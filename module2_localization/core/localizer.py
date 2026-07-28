@@ -6,7 +6,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pycolmap
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,37 +20,49 @@ DEADZONE_DEG = 4.0
 class AlikedLocalizer:
     def __init__(self, map_name="map_office_ref", device=None, kpts=2048, route_range=None,
                  det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit", route_cam=None,
-                 route_nodes=None):
+                 route_nodes=None, back_facing=False):
         from hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
         self.max_error = max_error
         self.steer = steer  # "pursuit" | "stanley"
         self.route_cam = route_cam
+        self.back_facing = back_facing  # камера смотрит назад по ходу -> "вперёд робота" = -опт.ось
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
-        self.rec = pycolmap.Reconstruction(str(work / "sparse" / "0"))
-        self.cam = list(self.rec.cameras.values())[0]
+        # карта читается из runtime.npz (tools/export_map.py) — pycolmap в рантайме не нужен
+        m = np.load(work / "runtime.npz")
+        fx, fy, cx, cy = m["K"]
+        self.K = np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1.0]])
+        self.dist = m["dist"].astype(np.float64)
+        self.cam_w, self.cam_h = (int(v) for v in m["size"])
+        self.points = m["points"]
         self.ext = ALIKED(max_num_keypoints=kpts, detection_threshold=det_threshold,
                           nms_radius=nms_radius).eval().to(self.dev)
+        # сеть в fp16 только на GPU: вдвое дешевле экстракция; на CPU half-свёртки нет
+        self.half_ext = self.dev == "cuda"
+        if self.half_ext:
+            self.ext = self.ext.half()
 
         sf = work / "scale.json"
         self.scale = json.loads(sf.read_text())["scale_m_per_unit"] if sf.exists() else None
 
         bank = np.load(work / "aliked_bank.npz")
-        self.mdesc = torch.from_numpy(bank["desc"].astype(np.float32)).to(self.dev)
+        self.mdesc = torch.from_numpy(bank["desc"].astype(np.float32)).half().to(self.dev)
         self.owner = torch.from_numpy(bank["owner"].astype(np.int64)).to(self.dev)
         self.mxyz = bank["xyz"]
+        if "align" in m:   # тот же поворот, что в runtime.npz -> поза PnP в системе маршрута
+            self.mxyz = self.mxyz @ m["align"].T
 
-        by_name = {im.name: im for im in self.rec.images.values()}
-        order = sorted(by_name)
+        pos_by_name = dict(zip(m["names"].tolist(), m["pos"]))
+        fwd_by_name = dict(zip(m["names"].tolist(), m["fwd"]))
+        order = sorted(pos_by_name)
         if self.route_cam:
             order = [n for n in order if self.route_cam in n]
         if route_range:
             a, b = route_range
             order = [n for n in order if a <= int("".join(filter(str.isdigit, n)) or 0) < b]
-        pos = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
-                         @ by_name[n].cam_from_world().translation) for n in order])
+        pos = np.array([pos_by_name[n] for n in order])
         if len(pos) > 5:
             seg = np.linalg.norm(np.diff(pos, axis=0), axis=1)
             thr = 10 * np.median(seg)
@@ -66,10 +77,15 @@ class AlikedLocalizer:
         if route_nodes and len(order) > route_nodes:
             print(f"[карта] маршрут обрезан: {len(order)} -> {route_nodes} узлов")
             order = order[:route_nodes]
-        self.route = np.array([(-by_name[n].cam_from_world().rotation.matrix().T
-                                @ by_name[n].cam_from_world().translation) for n in order])
-        self.route_fwd = np.array([by_name[n].cam_from_world().rotation.matrix().T
-                                   @ np.array([0, 0, 1.0]) for n in order])
+        self.route = np.array([pos_by_name[n] for n in order])
+        self.route_fwd = np.array([fwd_by_name[n] for n in order])
+        if self.back_facing:   # эталон в направлении ДВИЖЕНИЯ, а не взгляда задней камеры
+            self.route_fwd = -self.route_fwd
+        # длина дуги по узлам: упреждение задаём в ДИСТАНЦИИ, а не в узлах (в поворотах
+        # узлы гуще -> 12 узлов там = короткий путь; по дуге упреждение стабильно)
+        seg = np.linalg.norm(np.diff(self.route, axis=0), axis=1)
+        self.route_cum = np.concatenate([[0.0], np.cumsum(seg)])
+        self.node_step = float(np.median(seg)) if len(seg) else 1.0
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
 
@@ -81,20 +97,24 @@ class AlikedLocalizer:
             im = torch.from_numpy(rgb.transpose(2, 0, 1)).to(self.dev)
         else:
             im = load_image(str(path)).to(self.dev)
+        if self.half_ext:
+            im = im.half()
         with torch.inference_mode():
             f = self.ext.extract(im)
         qk = f["keypoints"][0].cpu().numpy()
-        q = f["descriptors"][0]
+        q = f["descriptors"][0].half()
         t_ext = (time.perf_counter() - t0) * 1000
 
         t0 = time.perf_counter()
         n = len(qk)
         if chunk is None:
             chunk = max(4096, int(256e6 / (4 * max(n, 1))))
-        best = torch.full((n,), -1e9, device=self.dev)
+        # всё держим на GPU: раньше .cpu() внутри цикла давал десятки синхронизаций.
+        # fp16: дескрипторы нормированы, точность сопоставления не страдает.
+        neg = torch.finfo(torch.float16).min
+        best = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
         bown = torch.full((n,), -1, dtype=torch.long, device=self.dev)
-        second = torch.full((n,), -1e9, device=self.dev)
-        bxyz = np.zeros((n, 3))
+        second = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
         with torch.inference_mode():
             for i in range(0, len(self.owner), chunk):
                 sim = q @ self.mdesc[i:i + chunk].T
@@ -107,46 +127,54 @@ class AlikedLocalizer:
                     second = torch.where(nb & (bown != o) & (bown >= 0),
                                          torch.maximum(second, best), second)
                     second = torch.where(~nb & (o != bown), torch.maximum(second, v), second)
-                    u = nb.cpu().numpy()
-                    if u.any():
-                        bxyz[u] = self.mxyz[o.cpu().numpy()[u]]
                     bown = torch.where(nb, o, bown)
                     best = torch.where(nb, v, best)
-        d1 = torch.sqrt((2 - 2 * best).clamp(min=0))
-        d2 = torch.sqrt((2 - 2 * second).clamp(min=0))
+        d1 = torch.sqrt((2 - 2 * best.float()).clamp(min=0))
+        d2 = torch.sqrt((2 - 2 * second.float()).clamp(min=0))
         keep = ((d1 / d2.clamp(min=1e-6) < RATIO) & (bown >= 0)).cpu().numpy()
+        own_cpu = bown.cpu().numpy()
         t_match = (time.perf_counter() - t0) * 1000
 
-        p2d, p3d = qk[keep], bxyz[keep]
+        p2d, p3d = qk[keep], self.mxyz[own_cpu[keep]]
         if len(p2d) < 8:
             return {"ok": False, "reason": f"мало пар: {len(p2d)}",
                     "t_ext": t_ext, "t_match": t_match}
 
         h_img, w_img = im.shape[-2], im.shape[-1]
-        if (w_img, h_img) == (self.cam.width, self.cam.height):
-            cam, ropt = self.cam, pycolmap.AbsolutePoseRefinementOptions()
-        else:
-            ef = None if isinstance(path, np.ndarray) else Localizer.focal_from_exif(path, w_img)
-            f0 = exif_focal or ef or 1.2 * max(w_img, h_img)
-            cam = pycolmap.Camera.create_from_model_id(
-                2, pycolmap.CameraModelId.SIMPLE_RADIAL, f0, w_img, h_img)
-            ropt = pycolmap.AbsolutePoseRefinementOptions()
-            ropt.refine_focal_length = True
-            ropt.refine_extra_params = True
+        K, dist = self.K, self.dist
+        if (w_img, h_img) != (self.cam_w, self.cam_h):
+            if abs(w_img / h_img - self.cam_w / self.cam_h) < 0.01:
+                # то же поле зрения, другой масштаб -> интринсики пересчитываются точно,
+                # дисторсия безразмерна и остаётся как есть
+                K = K.copy()
+                K[0] *= w_img / self.cam_w
+                K[1] *= h_img / self.cam_h
+            else:   # другое соотношение сторон: калибровка карты неприменима, фокус гадаем
+                ef = None if isinstance(path, np.ndarray) else Localizer.focal_from_exif(path, w_img)
+                f0 = exif_focal or ef or 1.2 * max(w_img, h_img)
+                K = np.array([[f0, 0, w_img / 2], [0, f0, h_img / 2], [0, 0, 1.0]])
+                dist = np.zeros(4)
 
-        eopt = pycolmap.AbsolutePoseEstimationOptions()
-        eopt.ransac.max_error = self.max_error
         t0 = time.perf_counter()
-        res = pycolmap.estimate_and_refine_absolute_pose(
-            p2d, p3d, cam, estimation_options=eopt, refinement_options=ropt)
+        ok, rvec, tvec, inl = cv2.solvePnPRansac(
+            p3d.astype(np.float64), p2d.astype(np.float64), K, dist,
+            reprojectionError=self.max_error, confidence=0.999,
+            iterationsCount=1000, flags=cv2.SOLVEPNP_EPNP)
+        if ok and inl is not None and len(inl) >= 6:
+            idx = inl.ravel()
+            rvec, tvec = cv2.solvePnPRefineLM(p3d[idx].astype(np.float64),
+                                              p2d[idx].astype(np.float64), K, dist, rvec, tvec)
         t_pnp = (time.perf_counter() - t0) * 1000
-        if res is None:
+        if not ok or inl is None or len(inl) < 6:
             return {"ok": False, "reason": "PnP не сошёлся", "n_pairs": len(p2d),
+                    "inliers": 0 if inl is None else len(inl),
                     "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
-        R = res["cam_from_world"].rotation.matrix()
-        C = -R.T @ res["cam_from_world"].translation
-        fwd = R.T @ np.array([0, 0, 1.0])
-        out = {"ok": True, "C": C, "fwd": fwd, "inliers": res["num_inliers"],
+        R, _ = cv2.Rodrigues(rvec)
+        C = (-R.T @ tvec).ravel()
+        fwd = (R.T @ np.array([[0], [0], [1.0]])).ravel()
+        if self.back_facing:   # направление движения робота, а не взгляда задней камеры
+            fwd = -fwd
+        out = {"ok": True, "C": C, "fwd": fwd, "inliers": len(inl),
                "n_pairs": len(p2d), "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
         out.update(Localizer.command(self, C, fwd, mode=self.steer))
         if self.scale:

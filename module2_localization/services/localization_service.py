@@ -23,6 +23,7 @@ def get_localizer():
             max_error=config.MAX_ERROR,
             route_cam=getattr(config, "ROUTE_CAM", None),
             route_nodes=getattr(config, "ROUTE_NODES", None),
+            back_facing=getattr(config, "CAMERA_BACK", False),
         )
     return _localizer
 

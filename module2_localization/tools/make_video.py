@@ -6,13 +6,13 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pycolmap
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
 from localizer import AlikedLocalizer  # noqa: E402
+from pilot import Pilot  # noqa: E402
 from route import Localizer  # noqa: E402
 import config as cfg  # noqa: E402  (module2_localization/config.py)
 
@@ -49,7 +49,7 @@ def build_canvas(loc, size):
     # эталон — маршрут ЛОКАЛИЗАТОРА (уже отфильтрован: одна камера _c2 + без выбросов),
     # тонкой линией. Раньше рисовались траектории всех 3 камер рига внахлёст -> толсто.
     R = loc.route
-    xyz = np.array([p.xyz for p in loc.rec.points3D.values()])
+    xyz = loc.points
     lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
     lo_p, hi_p = np.percentile(R[:, [0, 2]], [1, 99], axis=0)
     lo = np.minimum(lo_c, lo_p)
@@ -93,11 +93,15 @@ def main():
                     help="F2: доля инлайеров (инлайеры/пары); ложные фиксы имеют низкую")
     ap.add_argument("--mode", default="pursuit", choices=["pursuit", "stanley"])
     ap.add_argument("--route-cam", default=None, help="риг-карта: маршрут по одной камере, напр. _c2")
+    ap.add_argument("--back", action="store_true", help="камера смотрит назад по ходу движения")
+    ap.add_argument("--route-nodes", type=int, default=None, help="обрезка маршрута (по умолч. из конфига)")
     args = ap.parse_args()
 
     loc = AlikedLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
-                          route_cam=args.route_cam, route_nodes=cfg.ROUTE_NODES)
+                          route_cam=args.route_cam,
+                          route_nodes=args.route_nodes if args.route_nodes is not None else cfg.ROUTE_NODES,
+                          back_facing=args.back)
     loc.deadzone = cfg.DEADZONE_DEG   # мёртвая зона азимута из конфига (иначе command берёт 4)
     canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
@@ -112,12 +116,7 @@ def main():
 
     tmp = ROOT / "out" / "_frame.jpg"
     trail = deque(maxlen=TRAIL)
-    chist = deque(maxlen=5)        # история 3D-позиций для направления ДВИЖЕНИЯ (курс = скорость)
-    last_cmd = ("straight", 0.0)   # держим последнюю команду, когда стоим (на старте — прямо)
-    stopped = False                # латч: конец маршрута подтверждён -> команды не меняются
-    stop_hits = 0
-    last_node = None
-    rejects = jumps = 0
+    pilot = Pilot(cfg)             # та же логика команд, что у демона
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []
@@ -138,45 +137,17 @@ def main():
         times.append(ms)
 
         ratio = r["inliers"] / max(r.get("n_pairs", 0), 1) if r["ok"] else 0.0
-        good = (r["ok"] and r["inliers"] >= args.min_inliers
-                and ratio >= args.min_inlier_ratio)
-        if good and last_node is not None:   # та же отбраковка скачков, что в демоне
-            allowed = max(cfg.MIN_NODE_JUMP, int(cfg.MAX_NODES_PER_SEC * args.step / args.fps))
-            if r["node"] - last_node > allowed:
-                rejects += 1
-                if rejects < cfg.MAX_REJECTS:
-                    good = False
-                    jumps += 1
-                else:
-                    rejects = 0
-            else:
-                rejects = 0
-        if good:
-            last_node = r["node"]
-        if good:
+        if r["ok"] and (r["inliers"] < args.min_inliers or ratio < args.min_inlier_ratio):
+            r = {"ok": False, "inliers": r["inliers"]}
+        cmd = pilot.step(r, now=idx / args.fps)
+        good = cmd["move_type"] != "lost"
+        if pilot.accepted:
             ok_n += 1
             trail.append(px(r["C"][[0, 2]])[0])
-            chist.append(r["C"])
-            # команда r идёт из ПОЗЫ (locate -> command с r["fwd"]) — она ГЛАДКАЯ в движении.
-            # На МЕСТЕ поза дрожит, поэтому: едем -> берём свежую команду, стоим -> держим последнюю.
-            d = (chist[-1] - chist[0]) if len(chist) >= 2 else np.zeros(3)
-            moving = np.linalg.norm(d) > MOVE_EPS
-            if moving or last_cmd is None:
-                last_cmd = (r["move_type"], r["bearing_deg"])
-            else:
-                r["move_type"], r["bearing_deg"] = last_cmd
-            if r["move_type"] == "stop" and r["inliers"] >= cfg.STOP_MIN_INLIERS:
-                stop_hits += 1
-            else:
-                stop_hits = 0
-            stopped = stopped or stop_hits >= cfg.STOP_CONFIRM
-            if stopped:
-                r["move_type"], r["bearing_deg"] = "stop", 0.0
             last = r
-        elif stopped and last is not None:
+        elif good and last is not None:
             r = dict(last)                                  # приехали, LOST у стены -> держим STOP
             r["move_type"], r["bearing_deg"] = "stop", 0.0
-            good = True
 
         m = canvas.copy()
         for k in range(len(trail) - 1):
@@ -188,7 +159,7 @@ def main():
             node = r["node"]
             nearest = tuple(route_px[node])
             if args.mode == "pursuit":
-                tgt = tuple(route_px[min(node + 12, len(route_px) - 1)])
+                tgt = tuple(route_px[min(r.get("target_node", node + 12), len(route_px) - 1)])
                 cv2.line(m, c, tgt, (0, 235, 235), 2, cv2.LINE_AA)   # жёлтый: упреждающая цель
                 cv2.circle(m, tgt, 7, (0, 235, 235), 2)
             else:  # stanley: показываем ПОПЕРЕЧНОЕ СМЕЩЕНИЕ (робот -> ближайшая точка)
