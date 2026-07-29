@@ -26,8 +26,6 @@ def main():
     nums = np.array([int("".join(filter(str.isdigit, i.name)) or 0) for i in o])
     xyz = np.array([p.xyz for p in r.points3D.values()])
 
-    # границы: union облака и траектории по ПЕРЦЕНТИЛЮ (робастно к кадрам-выбросам,
-    # которые улетают на тысячи единиц; концы маршрута при этом остаются видны)
     lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
     lo_p, hi_p = np.percentile(P[:, [0, 2]], [1, 99], axis=0)
     lo = np.minimum(lo_c, lo_p)
@@ -48,7 +46,6 @@ def main():
     tp = px(P[:, [0, 2]])
     med = np.median(np.linalg.norm(np.diff(P, axis=0), axis=1))
     for k in range(len(tp) - 1):
-        # рвём линию на скачках и на пропущенных кадрах, чтобы не рисовать ложных связей
         if np.linalg.norm(P[k + 1] - P[k]) < 30 * med and nums[k + 1] - nums[k] <= 2:
             c = int(255 * k / len(tp))
             cv2.line(img, tuple(tp[k]), tuple(tp[k + 1]), (255 - c, 120, c), 3, cv2.LINE_AA)

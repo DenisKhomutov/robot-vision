@@ -51,7 +51,6 @@ def main():
         log(f"ОШИБКА: нет {src}")
         return 1
     out = ROOT / "data" / (args.out or f"frames_4f_adaptive_{args.video.replace('video', 'v')}")
-    # порог задан для длинной стороны 1280; для другого разрешения масштабируем
     probe = cv2.VideoCapture(str(src)); _w = probe.get(cv2.CAP_PROP_FRAME_WIDTH) or 1280; probe.release()
     shift = args.shift * max(_w, 1) / 1280.0
     if out.exists():

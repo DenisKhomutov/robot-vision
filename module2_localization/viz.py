@@ -1,10 +1,3 @@
-"""Окно оператора: карта + позиция робота + цель + предсказанная траектория руления.
-
-Рисует то же, что видео-самотест, но в реальном времени по сообщениям из NATS.
-
-    uv run --no-sync python -m module2_localization.viz --map map_back_720 \
-        --nats-url nats://<IP-джетсона>:4222
-"""
 import argparse
 import asyncio
 import json
@@ -18,12 +11,7 @@ SIZE = 900
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
-
-
-
-
 def build(map_name):
-    """Канва (облако + линия эталона), проекция px, узлы rp и nav для прокатки руления."""
     m = np.load(config.MAPS_DIR / map_name / "runtime.npz")
     order = sorted(range(len(m["names"])), key=lambda i: m["names"][i])
     rcam = getattr(config, "ROUTE_CAM", None)
@@ -31,7 +19,7 @@ def build(map_name):
         order = [i for i in order if rcam in str(m["names"][i])]
     P = m["pos"][order]
     F = m["fwd"][order]
-    if len(P) > 5:   # тот же фильтр выбросов, что в локализаторе — иначе узлы разъедутся
+    if len(P) > 5:
         seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
         thr = 10 * np.median(seg)
         keep = np.ones(len(P), bool)
@@ -63,8 +51,8 @@ def build(map_name):
     for k in range(len(rp) - 1):
         if np.linalg.norm(P[k + 1] - P[k]) < 30 * med:
             cv2.line(canvas, tuple(rp[k]), tuple(rp[k + 1]), (200, 170, 60), 2, cv2.LINE_AA)
-    cv2.circle(canvas, tuple(rp[0]), 8, (120, 230, 120), -1)    # старт зелёный
-    cv2.circle(canvas, tuple(rp[-1]), 8, (60, 60, 240), -1)     # финиш красный
+    cv2.circle(canvas, tuple(rp[0]), 8, (120, 230, 120), -1)
+    cv2.circle(canvas, tuple(rp[-1]), 8, (60, 60, 240), -1)
     return canvas, rp, px
 
 
@@ -106,14 +94,13 @@ async def main():
             pos = c.get("pos")
             p = tuple(px(pos)[0]) if pos is not None else tuple(rp[node])
 
-            # рекомендуемый путь (зелёный) — участок маршрута впереди, от узла до цели
             if mt != "stop":
                 for a, b in zip(rp[node:tnode], rp[node + 1:tnode + 1]):
                     cv2.line(img, tuple(a), tuple(b), (0, 255, 0), 3, cv2.LINE_AA)
 
-            cv2.line(img, p, tuple(rp[node]), (90, 90, 90), 1, cv2.LINE_AA)   # снос до линии
-            cv2.circle(img, tuple(rp[node]), 7, (120, 255, 120), 2)          # ближайший узел
-            cv2.circle(img, tuple(rp[tnode]), 7, (0, 235, 235), -1)          # цель (жёлтая)
+            cv2.line(img, p, tuple(rp[node]), (90, 90, 90), 1, cv2.LINE_AA)
+            cv2.circle(img, tuple(rp[node]), 7, (120, 255, 120), 2)
+            cv2.circle(img, tuple(rp[tnode]), 7, (0, 235, 235), -1)
             cv2.line(img, p, tuple(rp[tnode]), (0, 235, 235), 1, cv2.LINE_AA)
             if c.get("head") is not None:
                 hp = px([pos[0] + c["head"][0] * 0.5, pos[1] + c["head"][1] * 0.5])[0]
@@ -130,7 +117,7 @@ async def main():
             cv2.putText(img, "LOST", (16, 74), FONT, 1.1, col["lost"], 2, cv2.LINE_AA)
 
         cv2.imshow(win, img)
-        if cv2.waitKey(30) == 27:   # Esc
+        if cv2.waitKey(30) == 27:
             break
         await asyncio.sleep(0.001)
 

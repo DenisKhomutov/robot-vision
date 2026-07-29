@@ -29,7 +29,7 @@ class NatsClient:
                 disconnected_cb=disconnected_cb,
                 error_cb=error_cb,
                 closed_cb=closed_cb,
-                max_reconnect_attempts=-1,  # Бесконечный реконект
+                max_reconnect_attempts=-1,
             )
             logger.success(f"Успешное подключение к NATS: {self.url}")
         except Exception as e:

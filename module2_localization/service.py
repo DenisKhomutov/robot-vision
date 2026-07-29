@@ -160,9 +160,6 @@ class VideoFileSource:
 
 
 async def worker(src, nc, topic: str, loc, stop_evt=None) -> None:
-    loc.steer = config.STEER_MODE
-    loc.deadzone = config.DEADZONE_DEG
-    loc.stop_end_nodes = config.STOP_END_NODES
     pilot = Pilot(config)
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
@@ -203,7 +200,7 @@ async def main() -> int:
         try:
             nc = NatsClient(config.NATS_URL)
             await nc.connect()
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"[NATS] недоступен ({e}); печатаю только в терминал", flush=True)
             nc = None
 

@@ -1,16 +1,3 @@
-"""Карта из 3-камерного РИГА робота (синхронные камеры, разные углы).
-
-3 камеры сняты одновременно -> пары двух видов:
-  - ПОСЛЕДОВАТЕЛЬНЫЕ внутри камеры (соседние моменты) — хребет траектории;
-  - МЕЖКАМЕРНЫЕ в один момент (cam_i_t <-> cam_{i+1}_t, +-1) — перекрытие рига,
-    оно и сшивает три угла в ОДНУ карту (если соседние камеры видят общее).
-
-Кадры именуются {tttt}_c{n}.jpg: сортировка по времени, камера в суффиксе.
-glomap собирает всё с нуля. Масштаб — отдельно, tools/scale_from_odometry.py.
-
-    uv run --no-sync python module2_localization/tools/build_map_rig.py \
-        --videos rec/camera-1.mkv rec/camera-2.mkv rec/camera-3.mkv --tag map_rig
-"""
 import argparse
 import shutil
 import sqlite3
@@ -34,7 +21,6 @@ def log(m):
 
 
 def extract_synced(videos, imdir, step, width, max_frame=None):
-    """Каждый step-й кадр каждой камеры, ужатый до width, имя {idx}_c{cam}.jpg."""
     if imdir.exists():
         shutil.rmtree(imdir)
     imdir.mkdir(parents=True)
@@ -49,7 +35,7 @@ def extract_synced(videos, imdir, step, width, max_frame=None):
             ok, frame = cap.read()
             if not ok:
                 break
-            if max_frame and idx > max_frame:   # обрезаем хвост (напр. трясущийся конец у стены)
+            if max_frame and idx > max_frame:
                 break
             if idx % step == 0:
                 h, w = frame.shape[:2]
@@ -65,7 +51,6 @@ def extract_synced(videos, imdir, step, width, max_frame=None):
 
 
 def parse(name):
-    """'00042_c2.jpg' -> (время 42, камера 2)."""
     t, c = name[:-4].split("_c")
     return int(t), int(c)
 
@@ -106,16 +91,15 @@ def main():
     tstep = times[1] - times[0] if len(times) > 1 else args.step
     log(f"--- кадров {len(names)}, моментов {len(times)}")
 
-    # пары: последовательные внутри камеры + межкамерные в один/соседний момент
     idx = {n: i for i, n in enumerate(names)}
     by_tc = {(t, c): n for n, (t, c) in meta.items()}
     pairs = set()
     for n, (t, c) in meta.items():
-        for dt in range(1, args.overlap + 1):           # внутри камеры, вперёд по времени
+        for dt in range(1, args.overlap + 1):
             m = by_tc.get((t + dt * tstep, c))
             if m:
                 pairs.add(tuple(sorted((n, m))))
-        for dc in (1, -1):                               # соседние камеры, тот же и ±1 момент
+        for dc in (1, -1):
             for dt in (0, tstep, -tstep):
                 m = by_tc.get((t + dt, c + dc))
                 if m:
@@ -212,7 +196,6 @@ def main():
     np.savez_compressed(work / "aliked_bank.npz",
                         desc=np.stack(desc_bank).astype(np.float16),
                         owner=np.array(owner, np.int32), xyz=np.stack(xyz))
-    # сколько кадров каждой камеры зарегистрировано (сшились ли углы)
     reg = [0, 0, 0]
     for im in rec.images.values():
         reg[parse(im.name)[1] - 1] += 1

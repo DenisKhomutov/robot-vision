@@ -1,22 +1,18 @@
 import numpy as np
 from PIL import Image, ExifTags
 
-LOOKAHEAD_NODES = 12  # упреждение в узлах эталона (нарезка адаптивна -> узлы ~равноудалены)
-DEADZONE_DEG = 4.0    # |азимут| меньше -> straight
-STANLEY_K = 1.0       # усиление поперечного члена Стэнли (per ед. карты, тюнится)
-LOOKAHEAD_MIN = 5     # адаптивное упреждение: не короче этого (иначе рыскание)
-LOOKAHEAD_ADAPT = 8.0 # на сколько узлов укорачивать упреждение на ед. бокового смещения
-STOP_END_NODES = 3    # ближайший узел в этих последних узлах эталона -> команда stop
+LOOKAHEAD_NODES = 12
+DEADZONE_DEG = 4.0
+STANLEY_K = 1.0
+LOOKAHEAD_MIN = 5
+LOOKAHEAD_ADAPT = 8.0
+STOP_END_NODES = 3
 
 
 class Localizer:
-    """Руление по эталону. AlikedLocalizer наследует command() и focal_from_exif();
-    маршрут (self.route, route_fwd, route_cum, node_step) он строит сам."""
 
     @staticmethod
     def focal_from_exif(path, width):
-        """Фокус в пикселях из EXIF. Без этого догадка 1.2*сторона может ошибиться
-        втрое: снимки со сверхширокого модуля (14мм экв.) дают ~0.39*ширина."""
         try:
             inv = {v: k for k, v in ExifTags.TAGS.items()}
             ex = Image.open(path)._getexif() or {}
@@ -27,36 +23,32 @@ class Localizer:
             pass
         return None
 
-    def command(self, C, fwd, lookahead_nodes=LOOKAHEAD_NODES, mode="pursuit", stanley_k=STANLEY_K):
-        """Ближайшая точка эталона, смещение вбок, руление (упреждение или Стэнли)."""
-        # ближайший узел — С УЧЁТОМ КУРСА: встречный проход проходит рядом, без этого
-        # робот цепляется за него и разворачивается
+    def command(self, C, fwd, lookahead_nodes=None, mode=None, stanley_k=None):
+        lookahead_nodes = getattr(self, "lookahead", LOOKAHEAD_NODES) if lookahead_nodes is None else lookahead_nodes
+        mode = getattr(self, "steer", "pursuit") if mode is None else mode
+        stanley_k = getattr(self, "stanley_k", STANLEY_K) if stanley_k is None else stanley_k
         d = np.linalg.norm(self.route - C, axis=1)
         f = fwd / (np.linalg.norm(fwd) + 1e-9)
         align = self.route_fwd @ f / (np.linalg.norm(self.route_fwd, axis=1) + 1e-9)
-        ok = align > 0.3
+        ok = align > getattr(self, "heading_gate", 0.3)
         k = int(np.argmin(np.where(ok, d, np.inf))) if ok.any() else int(np.argmin(d))
-        # знаки: ось для векторных произведений — ВНИЗ (в мире COLMAP +y вниз).
-        # Соглашение: положительное = ВПРАВО (и азимут, и боковое смещение).
         down = np.array([0, 1.0, 0])
         t = self.route_fwd[k] / (np.linalg.norm(self.route_fwd[k]) + 1e-9)
         v = C - self.route[k]
-        e = float(np.dot(np.cross(t, v), down))          # поперечное смещение, + = робот правее
+        e = float(np.dot(np.cross(t, v), down))
         f_flat = fwd - np.dot(fwd, down) * down
 
         if mode == "stanley":
-            # δ = ψ (курс к касательной у БЛИЖАЙШЕЙ точки) + atan(k·e);
-            # e>0 (робот правее линии) -> член <0 -> руль влево, возврат на линию
             j = min(k + lookahead_nodes, len(self.route) - 1)
             t_flat = t - np.dot(t, down) * down
             psi = np.degrees(np.arctan2(np.dot(np.cross(f_flat, t_flat), down),
                                         np.dot(f_flat, t_flat)))
             ang = psi + np.degrees(np.arctan(-stanley_k * e))
         else:
-            # pure pursuit, упреждение в ДЛИНЕ ДУГИ (не в узлах — те в поворотах гуще).
-            # дальше от линии -> короче упреждение -> резче возврат; на линии -> плавно
             step = getattr(self, "node_step", 1.0)
-            want = max(lookahead_nodes - LOOKAHEAD_ADAPT * abs(e), LOOKAHEAD_MIN) * step
+            adapt = getattr(self, "lookahead_adapt", LOOKAHEAD_ADAPT)
+            lmin = getattr(self, "lookahead_min", LOOKAHEAD_MIN)
+            want = max(lookahead_nodes - adapt * abs(e), lmin) * step
             cum = getattr(self, "route_cum", None)
             if cum is not None:
                 j = min(int(np.searchsorted(cum, cum[k] + want)), len(self.route) - 1)
@@ -66,9 +58,8 @@ class Localizer:
             to_flat = to - np.dot(to, down) * down
             ang = np.degrees(np.arctan2(np.dot(np.cross(f_flat, to_flat), down),
                                         np.dot(f_flat, to_flat)))
-        dz = getattr(self, "deadzone", None) or DEADZONE_DEG   # порог из конфига (через локализатор)
+        dz = getattr(self, "deadzone", None) or DEADZONE_DEG
         mt = "straight" if abs(ang) < dz else ("right" if ang > 0 else "left")
-        # ДОСТИГЛИ КОНЦА эталона -> стоп (ближайший узел в хвосте маршрута)
         if k >= len(self.route) - 1 - getattr(self, "stop_end_nodes", STOP_END_NODES):
             mt, ang = "stop", 0.0
         return {"node": k, "target_node": j, "dist_to_route": float(d[k]),
