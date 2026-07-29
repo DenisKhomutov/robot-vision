@@ -245,3 +245,5 @@ uv run --group dev mypy --config-file pyproject.toml \
 построена карта. Честная цифра появится только на втором проезде другой записью.
 
 **Латч `stop` не сбрасывается.** Повторный проезд требует перезапуска демона.
+
+PYTORCH_NO_CUDA_MEMORY_CACHING=1 python3 -m module2_localization.service --shm

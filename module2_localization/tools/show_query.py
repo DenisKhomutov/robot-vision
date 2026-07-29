@@ -7,8 +7,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
-from localizer import AlikedLocalizer  # noqa: E402
-from route import Localizer  # noqa: E402  (focal_from_exif)
+from localizer import AlikedLocalizer
+from route import Localizer
 
 
 def main():
@@ -60,7 +60,6 @@ def main():
             qpath = Path("/tmp") / f"_q_{src.stem}.jpg"
             cv2.imwrite(str(qpath), im, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
-        # EXIF читаем из ОРИГИНАЛА: при пересохранении он теряется
         ef = Localizer.focal_from_exif(src, cv2.imread(str(qpath)).shape[1])
         r = loc.locate(qpath, exif_focal=ef)
         img = base.copy()
@@ -76,13 +75,12 @@ def main():
             near = rp[r["node"]]
             tgt = rp[r["target_node"]]
 
-            cv2.line(img, tuple(C), tuple(near), (0, 200, 255), 3, cv2.LINE_AA)   # смещение от эталона
-            # путь до цели — ПО МАРШРУТУ, а не по прямой: прямая срезает углы и ведёт сквозь стены
+            cv2.line(img, tuple(C), tuple(near), (0, 200, 255), 3, cv2.LINE_AA)
             seg = rp[r["node"]:r["target_node"] + 1]
             for a, b in zip(seg[:-1], seg[1:]):
                 cv2.line(img, tuple(a), tuple(b), (255, 200, 60), 3, cv2.LINE_AA)
             cv2.circle(img, tuple(near), 6, (0, 200, 255), -1)
-            cv2.circle(img, tuple(tgt), 8, (255, 200, 60), 2)                      # цель с упреждением
+            cv2.circle(img, tuple(tgt), 8, (255, 200, 60), 2)
             cv2.arrowedLine(img, tuple(C), tip, (80, 255, 80), 3, cv2.LINE_AA, tipLength=0.3)
             cv2.circle(img, tuple(C), 10, (80, 255, 80), -1)
             cv2.circle(img, tuple(C), 10, (255, 255, 255), 2)

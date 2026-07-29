@@ -1,12 +1,3 @@
-"""Метрический масштаб карты из ОДОМЕТРИИ (энкодеры робота) вместо кликанья по пикселям.
-
-Робот проехал маршрут, энкодеры дали реальную длину пути (encoder-log.jsonl,
-selected.distance_m). Карта построена из того же проезда — её длина в единицах карты
-известна. scale = длина_метры / длина_единицы. Пишет scale.json в карту.
-
-    uv run --no-sync python module2_localization/tools/scale_from_odometry.py \
-        --map <карта> --log map_for_office/rec/encoder-log.jsonl [--save]
-"""
 import argparse
 import json
 import sys
@@ -19,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def odometry_distance(log_path: Path) -> float:
-    """Итоговая пройденная дистанция (метры) из последней валидной строки лога."""
     dist = 0.0
     for line in log_path.read_text().splitlines():
         line = line.strip()
@@ -30,19 +20,18 @@ def odometry_distance(log_path: Path) -> float:
         except (json.JSONDecodeError, KeyError):
             continue
         if isinstance(d, (int, float)):
-            dist = max(dist, float(d))   # монотонно растёт; берём максимум
+            dist = max(dist, float(d))
     return dist
 
 
 def route_length_units(map_name: str, route_cam=None) -> float:
     rec = pycolmap.Reconstruction(str(ROOT / "maps" / map_name / "sparse" / "0"))
     order = sorted(rec.images.values(), key=lambda i: i.name)
-    if route_cam:  # риг-карта: длину меряем по ОДНОЙ камере, иначе зигзаг между 3 путями
+    if route_cam:
         order = [i for i in order if route_cam in i.name]
     P = np.array([(-i.cam_from_world().rotation.matrix().T @ i.cam_from_world().translation)
                   for i in order])
     seg = np.linalg.norm(np.diff(P, axis=0), axis=1)
-    # выбросы (кадры-«улетевшие» из-за плохой регистрации) раздувают длину — режем
     seg = seg[seg < 10 * np.median(seg)]
     return float(np.sum(seg))
 

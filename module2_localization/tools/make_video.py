@@ -10,15 +10,13 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
-from localizer import AlikedLocalizer  # noqa: E402
-from pilot import Pilot  # noqa: E402
-from route import Localizer  # noqa: E402
-import config as cfg  # noqa: E402  (module2_localization/config.py)
+from localizer import AlikedLocalizer
+from pilot import Pilot
+from route import Localizer
+import config as cfg
 
 
 def predict_path(loc, C, fwd, mode, steps=45, gain=0.4):
-    """Прокатка закона руления вперёд из текущей позы -> предсказанная кривая возврата
-    к эталону (у Стэнли — плавный экспоненциальный подход к касательной)."""
     down = np.array([0.0, 1.0, 0.0])
     ds = float(np.median(np.linalg.norm(np.diff(loc.route, axis=0), axis=1)))
     Cs = np.asarray(C, float).copy()
@@ -41,12 +39,9 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 PANE = 900
 VPANE = 1600
 TRAIL = 40
-MOVE_EPS = 0.06       # смещение (ед. карты) за окно chist ниже -> считаем, что стоим
 
 
 def build_canvas(loc, size):
-    # эталон — маршрут ЛОКАЛИЗАТОРА (уже отфильтрован: одна камера _c2 + без выбросов),
-    # тонкой линией. Раньше рисовались траектории всех 3 камер рига внахлёст -> толсто.
     R = loc.route
     xyz = loc.points
     lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
@@ -100,9 +95,13 @@ def main():
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
                           route_cam=args.route_cam,
                           route_nodes=args.route_nodes if args.route_nodes is not None else cfg.ROUTE_NODES,
-                          back_facing=args.back)
-    loc.deadzone = cfg.DEADZONE_DEG   # мёртвая зона азимута из конфига (иначе command берёт 4)
-    loc.stop_end_nodes = getattr(cfg, "STOP_END_NODES", 3)
+                          back_facing=args.back,
+                          match_ratio=cfg.MATCH_RATIO, match_topk=cfg.MATCH_TOPK,
+                          focal_fallback=cfg.FOCAL_FALLBACK, min_pairs=cfg.MIN_PAIRS,
+                          lookahead=cfg.LOOKAHEAD_NODES, lookahead_min=cfg.LOOKAHEAD_MIN,
+                          lookahead_adapt=cfg.LOOKAHEAD_ADAPT, deadzone=cfg.DEADZONE_DEG,
+                          stanley_k=cfg.STANLEY_K, heading_gate=cfg.HEADING_GATE,
+                          stop_end_nodes=cfg.STOP_END_NODES)
     canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
 
@@ -116,7 +115,7 @@ def main():
 
     tmp = ROOT / "out" / "_frame.jpg"
     trail = deque(maxlen=TRAIL)
-    pilot = Pilot(cfg)             # та же логика команд, что у демона
+    pilot = Pilot(cfg)
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []
@@ -146,7 +145,7 @@ def main():
             trail.append(px(r["C"][[0, 2]])[0])
             last = r
         elif good and last is not None:
-            r = dict(last)                                  # приехали, LOST у стены -> держим STOP
+            r = dict(last)
             r["move_type"], r["bearing_deg"] = "stop", 0.0
 
         m = canvas.copy()
@@ -159,16 +158,16 @@ def main():
             node = r["node"]
             nearest = tuple(route_px[node])
             if args.mode == "pursuit":
-                tgt = tuple(route_px[min(r.get("target_node", node + 12), len(route_px) - 1)])
-                cv2.line(m, c, tgt, (0, 235, 235), 2, cv2.LINE_AA)   # жёлтый: упреждающая цель
+                tgt = tuple(route_px[min(r.get("target_node", node + cfg.LOOKAHEAD_NODES), len(route_px) - 1)])
+                cv2.line(m, c, tgt, (0, 235, 235), 2, cv2.LINE_AA)
                 cv2.circle(m, tgt, 7, (0, 235, 235), 2)
-            else:  # stanley: показываем ПОПЕРЕЧНОЕ СМЕЩЕНИЕ (робот -> ближайшая точка)
+            else:
                 cv2.line(m, c, nearest, (0, 170, 255), 2, cv2.LINE_AA)
-            cv2.circle(m, nearest, 8, (120, 255, 120), 2)   # ближайшая точка эталона
+            cv2.circle(m, nearest, 8, (120, 255, 120), 2)
             pth = px(predict_path(loc, r["C"], r["fwd"], args.mode)[:, [0, 2]])
             for a2, b2 in zip(pth[:-1], pth[1:]):
-                cv2.line(m, tuple(a2), tuple(b2), (0, 255, 0), 2, cv2.LINE_AA)   # зелёная: предсказанная траектория
-            head = r["fwd"] / (np.linalg.norm(r["fwd"]) + 1e-9)   # курс = поза (гладкая в движении)
+                cv2.line(m, tuple(a2), tuple(b2), (0, 255, 0), 2, cv2.LINE_AA)
+            head = r["fwd"] / (np.linalg.norm(r["fwd"]) + 1e-9)
             f2 = px((r["C"] + head * 0.6)[[0, 2]])[0]
             cv2.arrowedLine(m, c, tuple(f2), (255, 255, 255), 3, cv2.LINE_AA, tipLength=0.35)
             cv2.circle(m, c, 11, (60, 60, 255), -1)

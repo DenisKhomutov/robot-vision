@@ -22,7 +22,7 @@ def to_command(r, min_inliers):
         "inliers": r["inliers"],
     }
     C, fwd = r.get("C"), r.get("fwd")
-    if C is not None:   # реальная позиция и курс в плоскости карты (X, Z) — для viz
+    if C is not None:
         cmd["pos"] = [round(float(C[0]), 4), round(float(C[2]), 4)]
         cmd["head"] = [round(float(fwd[0]), 4), round(float(fwd[2]), 4)]
     return cmd
@@ -31,7 +31,7 @@ def to_command(r, min_inliers):
 class Pilot:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.chist = deque(maxlen=5)
+        self.chist = deque(maxlen=getattr(cfg, "POSE_HISTORY", 5))
         self.last_cmd = ("straight", 0.0)
         self.stopped = False
         self.stop_hits = 0
@@ -41,7 +41,7 @@ class Pilot:
         self.rejects = 0
         self.accepted = False
         self.jump = None
-        self.moved_once = False   # до первого движения команду НЕ держим -> мозг видит доворот
+        self.moved_once = False
 
     def step(self, r, now=None):
         cfg = self.cfg
@@ -57,7 +57,7 @@ class Pilot:
                     self.jump = f"скачок: {r['node'] - self.last_node} > {allowed}"
                     r = {"ok": False, "inliers": 0}
                 else:
-                    self.rejects = 0   # столько отказов подряд -> ошибались мы, принимаем
+                    self.rejects = 0
             else:
                 self.rejects = 0
 
@@ -68,7 +68,7 @@ class Pilot:
             if float(np.linalg.norm(d)) > cfg.MOVE_EPS:
                 self.moved_once = True
                 self.last_cmd = (r["move_type"], r["bearing_deg"])
-            elif self.moved_once:   # держим последнюю ТОЛЬКО после старта (гасим дрожь на остановках)
+            elif self.moved_once:
                 r["move_type"], r["bearing_deg"] = self.last_cmd
             if r["move_type"] == "stop" and r["inliers"] >= cfg.STOP_MIN_INLIERS:
                 self.stop_hits += 1

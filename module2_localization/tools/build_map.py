@@ -41,10 +41,6 @@ def fetch_vocab():
 
 
 def vocab_pairs(imdir, work, neighbors):
-    """SIFT-оракул: словарь находит визуально похожие кадры (петли). SIFT — только для отбора
-    пар, в геометрию карты не идёт. Берём vocab_tree_RETRIEVER (только ранжирование, ничего
-    не пишет в базу), а не matcher: matcher в этой сборке COLMAP падает на WriteMatches
-    ('constraint failed'). Возвращает множество пар-имён и строку камеры (EXIF-фокус)."""
     rdb = work / "retrieval.db"
     if rdb.exists():
         rdb.unlink()
@@ -132,7 +128,6 @@ def main():
                  for j in range(i + 1, len(names))]
         log(f"пар всего {len(pairs)} (exhaustive)")
     elif args.pairs == "loop":
-        # хвост↔голова: робот вернулся в старт, последние кадры видят те же места, что первые
         h, t = min(args.loop_head, len(names)), min(args.loop_tail, len(names))
         loops = {tuple(sorted((names[i], names[len(names) - 1 - j])))
                  for i in range(h) for j in range(t)}
@@ -170,8 +165,6 @@ def main():
         model, cw, ch, params = cam_row
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, model, cw, ch, params, 0))
     else:
-        # OPENCV (модель 4: fx,fy,cx,cy,k1,k2,p1,p2) — полная дисторсия, как её ставит
-        # SIFT-путь. SIMPLE_RADIAL (1 к-т искажения) даёт грязнее геометрию (-3% recall).
         f0 = 1.2 * max(w, h)
         params = np.array([f0, f0, w / 2, h / 2, 0, 0, 0, 0], np.float64).tobytes()
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
