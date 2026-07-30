@@ -4,7 +4,7 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "map_back_720"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "map_rig_rear"   # карта по умолчанию (папка в maps/)
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 
