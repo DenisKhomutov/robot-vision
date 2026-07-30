@@ -12,7 +12,7 @@ import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_IMAGE_ID = 2147483647
-MIN_MATCHES = 15
+MIN_MATCHES = 10
 VOCAB_TREE = ROOT / "data" / "vocab_tree_flickr100K_words32K.bin"
 VOCAB_URL = "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"
 
