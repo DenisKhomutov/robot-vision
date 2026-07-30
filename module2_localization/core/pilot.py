@@ -42,7 +42,7 @@ class Pilot:
         self.accepted = False
         self.jump = None
         self.moved_once = False
-        self.paused = False
+        self.paused = True
 
     def pause(self):
         self.paused = True
