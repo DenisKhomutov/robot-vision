@@ -42,6 +42,18 @@ class Pilot:
         self.accepted = False
         self.jump = None
         self.moved_once = False
+        self.paused = False
+
+    def pause(self):
+        self.paused = True
+
+    def resume(self):
+        self.paused = False
+
+    def reset(self):
+        self.stopped = False
+        self.stop_hits = 0
+        self.rejects = 0
 
     def step(self, r, now=None):
         cfg = self.cfg
@@ -87,5 +99,7 @@ class Pilot:
                    "reason": self.jump or cmd["reason"]}
         if self.stopped:
             cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node")}
+        if self.paused:
+            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"), "paused": True}
         cmd["ts"] = round(time.time(), 3)
         return cmd
