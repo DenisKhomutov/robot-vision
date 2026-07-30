@@ -78,6 +78,12 @@ async def main():
     await nc.connect()
     await nc.subscribe(args.topic, on_msg)
     print(f"[viz] карта {args.map}, слушаю {args.topic} на {args.nats_url}", flush=True)
+    print("[viz] управление: p=пауза  r=возобновить  c=сброс  Esc=выход", flush=True)
+
+    async def send_control(cmd):
+        await nc.publish(config.NATS_CONTROL_TOPIC,
+                         json.dumps({"cmd": cmd}).encode())
+        print(f"[viz] control -> {cmd}", flush=True)
 
     col = {"left": (60, 200, 255), "right": (60, 200, 255), "straight": (80, 255, 80),
            "stop": (60, 60, 240), "lost": (90, 90, 240)}
@@ -116,9 +122,19 @@ async def main():
         else:
             cv2.putText(img, "LOST", (16, 74), FONT, 1.1, col["lost"], 2, cv2.LINE_AA)
 
+        if c.get("paused"):
+            cv2.putText(img, "PAUSED", (SIZE - 190, 34), FONT, 0.8, (60, 200, 255), 2, cv2.LINE_AA)
+
         cv2.imshow(win, img)
-        if cv2.waitKey(30) == 27:
+        key = cv2.waitKey(30) & 0xFF
+        if key == 27:
             break
+        elif key == ord("p"):
+            await send_control("pause")
+        elif key == ord("r"):
+            await send_control("resume")
+        elif key == ord("c"):
+            await send_control("reset")
         await asyncio.sleep(0.001)
 
     await nc.close()

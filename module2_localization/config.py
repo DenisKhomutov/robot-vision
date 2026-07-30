@@ -56,3 +56,4 @@ CAM_FPS = 30                   # частота кадров из сокета
 NATS_HOST = "192.168.40.48"    # хост NATS (для внешних подписчиков, напр. viz)
 NATS_URL = "nats://127.0.0.1:4222"  # адрес подключения демона
 NATS_TOPIC = "robot.vision.localization"  # топик публикации команд
+NATS_CONTROL_TOPIC = "robot.vision.control"  # топик команд управления от админки (pause/resume/reset/set_map)

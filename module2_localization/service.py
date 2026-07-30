@@ -159,8 +159,32 @@ class VideoFileSource:
         pass
 
 
+def make_control_handler(pilot):
+    async def on_control(msg):
+        try:
+            c = json.loads(msg.data.decode())
+        except json.JSONDecodeError:
+            return
+        cmd = c.get("cmd")
+        if cmd == "pause":
+            pilot.pause()
+        elif cmd == "resume":
+            pilot.resume()
+        elif cmd == "reset":
+            pilot.reset()
+        elif cmd == "set_map":
+            print(f"[control] set_map пока не реализован (запрошена карта {c.get('map')})", flush=True)
+        else:
+            print(f"[control] неизвестная команда: {cmd}", flush=True)
+            return
+        print(f"[control] {cmd}", flush=True)
+    return on_control
+
+
 async def worker(src, nc, topic: str, loc, stop_evt=None) -> None:
     pilot = Pilot(config)
+    if nc:
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(pilot))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
         stamp, frame = src.latest()
