@@ -2,6 +2,7 @@ import argparse
 import json
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -19,7 +20,8 @@ class AlikedLocalizer:
                  route_nodes=None, back_facing=False, match_ratio=0.9, match_topk=8,
                  focal_fallback=1.2, min_pairs=8, pnp_confidence=0.999, pnp_iters=1000,
                  lookahead=12, lookahead_min=5, lookahead_adapt=8.0, deadzone=4.0,
-                 stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3):
+                 stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
+                 lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5):
         from hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
@@ -40,6 +42,10 @@ class AlikedLocalizer:
         self.stanley_k = stanley_k
         self.heading_gate = heading_gate
         self.stop_end_nodes = stop_end_nodes
+        self.lag_s = lag_s              # упреждение: время задержки инференс+доставка, с
+        self.lag_adaptive = lag_adaptive  # брать фактическое время кадра вместо lag_s
+        self.lead_max = lead_max        # потолок сдвига упреждения, ед.карты (страховка от скачка v)
+        self._lead_hist = deque(maxlen=lead_smooth)  # (C, t) для оценки скорости
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
         m = np.load(work / "runtime.npz")
@@ -96,6 +102,22 @@ class AlikedLocalizer:
         self.node_step = float(np.median(seg)) if len(seg) else 1.0
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
+
+    def _lead(self, C, fwd, frame_ms):
+        # скорость по окну истории поз (ед.карты/с), сглаженная -> без дрожи PnP
+        now = time.perf_counter()
+        self._lead_hist.append((np.asarray(C, float), now))
+        if len(self._lead_hist) < 2:
+            return C
+        C0, t0 = self._lead_hist[0]
+        dt = now - t0
+        if dt < 1e-3:
+            return C
+        v = float(np.linalg.norm(C - C0)) / dt          # ед.карты/с
+        lag = (frame_ms / 1000.0) if self.lag_adaptive else self.lag_s
+        lead = min(v * lag, self.lead_max)              # потолок против скачка скорости
+        f = fwd / (np.linalg.norm(fwd) + 1e-9)
+        return np.asarray(C, float) + lead * f
 
     def locate(self, path, chunk=None, exif_focal=None):
         from lightglue.utils import load_image
@@ -180,7 +202,12 @@ class AlikedLocalizer:
             fwd = -fwd
         out = {"ok": True, "C": C, "fwd": fwd, "inliers": len(inl),
                "n_pairs": len(p2d), "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
-        out.update(Localizer.command(self, C, fwd, mode=self.steer))
+        # упреждение: команду считаем не от текущей позы, а от той, где робот будет
+        # через время задержки (сдвиг = скорость * lag по курсу). Углы НЕ режем — двигаем
+        # только точку старта, цель на эталоне не трогаем.
+        C_lead = self._lead(C, fwd, t_ext + t_match + t_pnp)
+        out.update(Localizer.command(self, C_lead, fwd, mode=self.steer))
+        out["C_lead"] = C_lead
         if self.scale:
             out["dist_to_route_m"] = out["dist_to_route"] * self.scale
             out["offset_m"] = out["offset"] * self.scale

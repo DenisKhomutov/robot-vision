@@ -36,6 +36,10 @@ def get_localizer():
             stanley_k=config.STANLEY_K,
             heading_gate=config.HEADING_GATE,
             stop_end_nodes=config.STOP_END_NODES,
+            lag_s=config.NAV_LAG_S,
+            lag_adaptive=config.NAV_LAG_ADAPTIVE,
+            lead_max=config.NAV_LEAD_MAX,
+            lead_smooth=config.NAV_LEAD_SMOOTH,
         )
     return _localizer
 
