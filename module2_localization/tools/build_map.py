@@ -6,13 +6,14 @@ import sys
 import time
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pycolmap
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_IMAGE_ID = 2147483647
-MIN_MATCHES = 10
+MIN_MATCHES = 15
 VOCAB_TREE = ROOT / "data" / "vocab_tree_flickr100K_words32K.bin"
 VOCAB_URL = "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"
 
@@ -92,6 +93,12 @@ def main():
                     choices=["vocab", "sequential", "exhaustive", "loop"])
     ap.add_argument("--loop-head", type=int, default=25, help="loop: первых кадров у старта")
     ap.add_argument("--loop-tail", type=int, default=25, help="loop: последних кадров у финиша")
+    ap.add_argument("--focal", type=float, default=None,
+                    help="стартовый фокус в px (fx=fy). Без него — догадка 1.2*сторона (часто "
+                         "плохо уточняется на прямых коридорах -> кривой fx -> ошибка поворотов)")
+    ap.add_argument("--masks", default=None,
+                    help="папка масок (data/<...>): точки внутри маски (255) отбрасываются, "
+                         "картинка не трогается — без ложных точек на кромке заливки")
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
@@ -141,21 +148,49 @@ def main():
     ext = ALIKED(max_num_keypoints=args.kpts, detection_threshold=args.det_threshold).eval().to(dev)
     lg = LightGlue(features="aliked").eval().to(dev)
 
-    log("--- ALIKED: извлечение")
+    maskdir = ROOT / "data" / args.masks if args.masks else None
+    if maskdir and not maskdir.exists():
+        log(f"нет папки масок {maskdir}")
+        return 1
+
+    def drop_masked(f, name, ih, iw):
+        mp = maskdir / (Path(name).stem + ".png")
+        if not mp.exists():
+            return f, 0
+        mimg = cv2.imread(str(mp), cv2.IMREAD_GRAYSCALE)
+        if mimg.shape != (ih, iw):
+            mimg = cv2.resize(mimg, (iw, ih), interpolation=cv2.INTER_NEAREST)
+        kp = f["keypoints"][0]
+        x = kp[:, 0].round().long().clamp(0, iw - 1)
+        y = kp[:, 1].round().long().clamp(0, ih - 1)
+        mt = torch.from_numpy(mimg).to(kp.device)
+        keep = mt[y, x] == 0
+        dropped = int((~keep).sum())
+        for key in ("keypoints", "keypoint_scores", "descriptors"):
+            if key in f:
+                f[key] = f[key][:, keep]
+        return f, dropped
+
+    log("--- ALIKED: извлечение" + (" (+маски)" if maskdir else ""))
     t0 = time.perf_counter()
     feats = {}
     h = w = None
+    dropped_total = 0
     for k, n in enumerate(names):
         with torch.inference_mode():
             im = load_image(str(imdir / n)).to(dev)
             feats[n] = ext.extract(im)
+        ih, iw = int(im.shape[-2]), int(im.shape[-1])
+        if maskdir:
+            feats[n], dr = drop_masked(feats[n], n, ih, iw)
+            dropped_total += dr
         if h is None:
-            h, w = int(im.shape[-2]), int(im.shape[-1])
+            h, w = ih, iw
         if (k + 1) % 100 == 0:
             el = time.perf_counter() - t0
             log(f"  {k+1}/{len(names)} | {el:.0f}с | ~{el/(k+1)*(len(names)-k-1):.0f}с")
     med = int(np.median([feats[n]["keypoints"].shape[1] for n in names]))
-    log(f"--- точек: медиана {med}")
+    log(f"--- точек: медиана {med}" + (f", выброшено по маскам {dropped_total}" if maskdir else ""))
 
     log("--- база (colmap database_creator)")
     subprocess.run(["colmap", "database_creator", "--database_path", str(db_path)],
@@ -165,9 +200,10 @@ def main():
         model, cw, ch, params = cam_row
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, model, cw, ch, params, 0))
     else:
-        f0 = 1.2 * max(w, h)
+        f0 = args.focal if args.focal else 1.2 * max(w, h)
         params = np.array([f0, f0, w / 2, h / 2, 0, 0, 0, 0], np.float64).tobytes()
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
+        log(f"--- стартовый фокус {f0:.0f}px" + (" (задан)" if args.focal else " (догадка 1.2*сторона)"))
     for k, n in enumerate(names, 1):
         db.execute("INSERT INTO images (image_id, name, camera_id) VALUES (?,?,?)", (k, n, 1))
         kp = feats[n]["keypoints"][0].cpu().numpy().astype(np.float32)
