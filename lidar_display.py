@@ -9,7 +9,7 @@ import numpy as np
 
 PORT = 9099
 SIZE = 700
-RANGE = 8.0                      
+RANGE = 6.5                      
 ACCUM = 5
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -54,7 +54,7 @@ def receiver(host):
         threading.Event().wait(1.0)
 
 
-def panel(xyz, a, b, la, lb):
+def panel(xyz, a, b):
     img = np.full((SIZE, SIZE, 3), 20, np.uint8)
     c = SIZE // 2
     s = (SIZE * 0.45) / RANGE
@@ -71,8 +71,6 @@ def panel(xyz, a, b, la, lb):
         m = (u >= 0) & (u < SIZE) & (v >= 0) & (v < SIZE)
         col = np.stack([(255 * (1 - t)), (255 * (1 - np.abs(t - .5) * 2)), (255 * t)], 1).astype(np.uint8)
         img[v[m], u[m]] = col[m]
-    cv2.putText(img, f"{la}->", (SIZE - 60, c - 8), FONT, 0.5, (200, 200, 200), 1)
-    cv2.putText(img, f"^{lb}", (c + 6, 20), FONT, 0.5, (200, 200, 200), 1)
     return img
 
 
@@ -106,8 +104,10 @@ def main():
             raw = None if _latest["xyz"] is None else _latest["xyz"].copy()
             n = _latest["n"]
         xyz = None if raw is None else raw @ rebuild().T
-        top = panel(xyz, 0, 1, "FWD", "LEFT")
-        front = panel(xyz, 0, 2, "FWD", "UP")
+        top = panel(xyz, 0, 1)
+        front = panel(xyz, 0, 2)
+        front = cv2.rotate(front, cv2.ROTATE_180)
+        front = cv2.flip(front, 1)
         both = np.hstack([top, front])
         cv2.putText(both, f"roll={st['roll']:.0f} pitch={st['pitch']:.0f} yaw={st['yaw']:.0f} "
                     f"mirror={st['mirror']}   points={n}",
