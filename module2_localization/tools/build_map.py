@@ -96,6 +96,9 @@ def main():
     ap.add_argument("--focal", type=float, default=None,
                     help="стартовый фокус в px (fx=fy). Без него — догадка 1.2*сторона (часто "
                          "плохо уточняется на прямых коридорах -> кривой fx -> ошибка поворотов)")
+    ap.add_argument("--calib", default=None,
+                    help="npz с калибровкой (K, dist, image_size) -> камера OPENCV, интринсики "
+                         "ФИКСИРУЮТСЯ в BA (не уточняются). Лучший вариант, если есть шахматка")
     ap.add_argument("--masks", default=None,
                     help="папка масок (data/<...>): точки внутри маски (255) отбрасываются, "
                          "картинка не трогается — без ложных точек на кромке заливки")
@@ -196,7 +199,18 @@ def main():
     subprocess.run(["colmap", "database_creator", "--database_path", str(db_path)],
                    stdout=subprocess.DEVNULL, check=True)
     db = sqlite3.connect(str(db_path))
-    if cam_row is not None:
+    if args.calib:
+        cal = np.load(args.calib)
+        K = cal["K"]
+        dd = cal["dist"].ravel()
+        cw, ch = (int(x) for x in cal["image_size"])
+        sx, sy = w / cw, h / ch          # пересчёт K, если калибровка снята в другом разрешении
+        fx, fy, cxp, cyp = K[0, 0] * sx, K[1, 1] * sy, K[0, 2] * sx, K[1, 2] * sy
+        params = np.array([fx, fy, cxp, cyp, dd[0], dd[1], dd[2], dd[3]], np.float64).tobytes()
+        db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
+        log(f"--- калибровка: fx={fx:.0f} fy={fy:.0f} cx={cxp:.0f} cy={cyp:.0f} "
+            f"k1={dd[0]:.3f} (фиксируется в BA)")
+    elif cam_row is not None:
         model, cw, ch, params = cam_row
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, model, cw, ch, params, 0))
     else:
@@ -243,9 +257,11 @@ def main():
 
     sparse = work / "sparse"
     sparse.mkdir(parents=True, exist_ok=True)
-    if not run(["glomap", "mapper", "--database_path", str(db_path),
-                "--image_path", str(imdir), "--output_path", str(sparse)], "glomap (SfM с нуля)",
-               quiet=False):
+    gm = ["glomap", "mapper", "--database_path", str(db_path),
+          "--image_path", str(imdir), "--output_path", str(sparse)]
+    if args.calib:
+        gm += ["--BundleAdjustment.optimize_intrinsics", "0"]   # держим шахматочную K
+    if not run(gm, "glomap (SfM с нуля)", quiet=False):
         return 1
 
     models = sorted(p for p in sparse.iterdir() if p.is_dir())

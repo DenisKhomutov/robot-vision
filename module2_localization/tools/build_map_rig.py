@@ -57,7 +57,7 @@ def parse(name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--videos", nargs=3, required=True, help="3 mkv (cam1 cam2 cam3)")
+    ap.add_argument("--videos", nargs="+", required=True, help="видео камер рига (cam1 cam2 ...)")
     ap.add_argument("--tag", default="map_rig")
     ap.add_argument("--width", type=int, default=1280)
     ap.add_argument("--step", type=int, default=6, help="каждый N-й кадр видео")
@@ -122,15 +122,17 @@ def main():
         if (k + 1) % 100 == 0:
             log(f"  {k+1}/{len(names)}")
 
-    log("--- база + камера (OPENCV, общая для рига)")
+    log("--- база + ОТДЕЛЬНАЯ камера OPENCV на каждый _cN (разные объективы)")
     subprocess.run(["colmap", "database_creator", "--database_path", str(db_path)],
                    stdout=subprocess.DEVNULL, check=True)
     db = sqlite3.connect(str(db_path))
     f0 = 1.2 * max(w, h)
     params = np.array([f0, f0, w / 2, h / 2, 0, 0, 0, 0], np.float64).tobytes()
-    db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
+    ncam = max(c for _, c in meta.values())
+    for cam in range(1, ncam + 1):
+        db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (cam, 4, w, h, params, 0))
     for k, n in enumerate(names, 1):
-        db.execute("INSERT INTO images (image_id, name, camera_id) VALUES (?,?,?)", (k, n, 1))
+        db.execute("INSERT INTO images (image_id, name, camera_id) VALUES (?,?,?)", (k, n, meta[n][1]))
         kp = feats[n]["keypoints"][0].cpu().numpy().astype(np.float32)
         db.execute("INSERT INTO keypoints VALUES (?,?,?,?)", (k, kp.shape[0], 2, kp.tobytes()))
     db.commit()

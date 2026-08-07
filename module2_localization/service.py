@@ -11,9 +11,9 @@ import cv2
 import numpy as np
 
 from . import config
-from .core.pilot import Pilot
+from .core.dualnav import DualNav
 from .nats_client import NatsClient
-from .services.localization_service import get_localizer
+from .services.localization_service import build_localizer, get_localizer
 
 
 class ShmSource:
@@ -159,7 +159,7 @@ class VideoFileSource:
         pass
 
 
-def make_control_handler(pilot):
+def make_control_handler(nav):
     async def on_control(msg):
         try:
             c = json.loads(msg.data.decode())
@@ -167,11 +167,15 @@ def make_control_handler(pilot):
             return
         cmd = c.get("cmd")
         if cmd == "pause":
-            pilot.pause()
+            nav.pf.pause(); nav.pr.pause()
         elif cmd == "resume":
-            pilot.resume()
+            nav.pf.resume(); nav.pr.resume()
         elif cmd == "reset":
-            pilot.reset()
+            nav.pf.reset(); nav.pr.reset()
+        elif cmd == "set_mode":
+            nav.set_mode(c.get("mode"))
+            print(f"[control] режим -> {nav.mode}", flush=True)
+            return
         elif cmd == "set_map":
             print(f"[control] set_map пока не реализован (запрошена карта {c.get('map')})", flush=True)
         else:
@@ -181,43 +185,74 @@ def make_control_handler(pilot):
     return on_control
 
 
-async def worker(src, nc, topic: str, loc, stop_evt=None) -> None:
-    pilot = Pilot(config)
+async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None) -> None:
     if nc:
-        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(pilot))
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
-        stamp, frame = src.latest()
-        if frame is not None and stamp != last_stamp:
+        stamp, rframe = rear_src.latest()               # ведём цикл по задней (всегда есть)
+        fframe = front_src.latest()[1] if front_src else None
+        if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
-            cmd = pilot.step(loc.locate(frame))
+            cmd = nav.step(fframe, rframe)
             payload = json.dumps(cmd, ensure_ascii=False).encode()
             print(payload.decode(), flush=True)
             if nc:
                 await nc.publish(topic, payload)
             await asyncio.sleep(0)
-        elif src.done:
+        elif rear_src.done or (front_src and front_src.done):
             break
         else:
             await asyncio.sleep(0.003)
 
 
+def _shm(sock):
+    return ShmSource(sock, config.CAM_WIDTH, config.CAM_HEIGHT, config.CAM_FPS)
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser(description="демон локализации: камера -> команда -> терминал+NATS")
     ap.add_argument("--camera", default=None, help="переопределить источник (индекс/GStreamer)")
-    ap.add_argument("--video", default=None, help="видеофайл вместо камеры (отладка)")
+    ap.add_argument("--video", default=None, help="видеофайл вместо камеры (отладка, только зад)")
     ap.add_argument("--source-step", type=int, default=2, help="файл: каждый N-й кадр в буфер")
     ap.add_argument("--shm", nargs="?", const=config.CAM_SHM_SOCKET, default=None,
                     help=f"кадры из ветки fan-out (по умолчанию {config.CAM_SHM_SOCKET})")
+    ap.add_argument("--dual", action="store_true",
+                    help="двухкамерный режим: грузит фронт+зад локализаторы, можно переключать в viz")
+    ap.add_argument("--video-front", default=None, help="dual: видео передней (отладка)")
+    ap.add_argument("--video-rear", default=None, help="dual: видео задней (отладка)")
+    ap.add_argument("--mode", default=None, choices=["rear", "dual"], help="стартовый режим (по умолч. из конфига)")
     ap.add_argument("--no-nats", action="store_true", help="только терминал, без NATS")
     args = ap.parse_args()
 
-    if args.video:
-        src = VideoFileSource(args.video, step=args.source_step)
-    elif args.shm:
-        src = ShmSource(args.shm, config.CAM_WIDTH, config.CAM_HEIGHT, config.CAM_FPS)
-    else:
-        src = CameraSource(args.camera or config.CAMERA)
+    # dual включается флагом --dual, парой видео, или NAV_MODE=dual в конфиге;
+    # но явный одиночный источник (--video/--shm/--camera) принудительно оставляет только зад
+    dual = (args.dual or config.NAV_MODE == "dual" or (args.video_front and args.video_rear)) \
+        and not (args.video or args.shm or args.camera)
+
+    front_src = front_loc = None
+    if dual:                                         # ── двухкамерный: фронт+зад
+        if args.video_front and args.video_rear:
+            front_src = VideoFileSource(args.video_front, step=args.source_step)
+            rear_src = VideoFileSource(args.video_rear, step=args.source_step)
+        else:
+            front_src = _shm(config.FRONT_SHM_SOCKET)
+            rear_src = _shm(config.REAR_SHM_SOCKET)
+        front_loc = build_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK)
+        rear_loc = build_localizer(config.REAR_MAP, config.REAR_CAM_BACK)
+    else:                                            # ── только зад (как сейчас)
+        if args.video:
+            rear_src = VideoFileSource(args.video, step=args.source_step)
+        elif args.shm:
+            rear_src = _shm(args.shm)
+        else:
+            rear_src = CameraSource(args.camera or config.CAMERA)
+        rear_loc = get_localizer()
+
+    nav = DualNav(front_loc, rear_loc, config)
+    if args.mode:
+        nav.set_mode(args.mode)
+    print(f"[nav] режим {nav.mode}" + ("  (dual доступен)" if front_loc else ""), flush=True)
 
     nc = None
     if not args.no_nats:
@@ -228,18 +263,20 @@ async def main() -> int:
             print(f"[NATS] недоступен ({e}); печатаю только в терминал", flush=True)
             nc = None
 
-    loc = get_localizer()
-
     stop_evt = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, stop_evt.set)
 
-    src.start()
+    if front_src:
+        front_src.start()
+    rear_src.start()
     try:
-        await worker(src, nc, config.NATS_TOPIC, loc, stop_evt)
+        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt)
     finally:
-        src.stop()
+        if front_src:
+            front_src.stop()
+        rear_src.stop()
         if nc:
             await nc.close()
         print("Cameras Brain остановлен", flush=True)

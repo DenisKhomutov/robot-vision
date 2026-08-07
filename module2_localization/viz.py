@@ -53,7 +53,7 @@ def build(map_name):
             cv2.line(canvas, tuple(rp[k]), tuple(rp[k + 1]), (200, 170, 60), 2, cv2.LINE_AA)
     cv2.circle(canvas, tuple(rp[0]), 8, (120, 230, 120), -1)
     cv2.circle(canvas, tuple(rp[-1]), 8, (60, 60, 240), -1)
-    return canvas, rp, px
+    return canvas, rp, px, len(rp)
 
 
 async def main():
@@ -64,8 +64,12 @@ async def main():
     args = ap.parse_args()
 
     from .nats_client import NatsClient
-    canvas, rp, px = build(args.map)
-    n = len(rp)
+    maps = {"rear": build(args.map)}                 # активная карта выбирается по камере
+    try:                                             # фронт-карту грузим, если есть (dual)
+        if config.FRONT_MAP != args.map:
+            maps["front"] = build(config.FRONT_MAP)
+    except Exception as e:
+        print(f"[viz] фронт-карта {config.FRONT_MAP} не загружена ({e}); только зад", flush=True)
     latest = {"cmd": None}
 
     async def on_msg(msg):
@@ -80,18 +84,19 @@ async def main():
     print(f"[viz] карта {args.map}, слушаю {args.topic} на {args.nats_url}", flush=True)
     print("[viz] управление: p=пауза  r=возобновить  c=сброс  Esc=выход", flush=True)
 
-    async def send_control(cmd):
+    async def send_control(cmd, **extra):
         await nc.publish(config.NATS_CONTROL_TOPIC,
-                         json.dumps({"cmd": cmd}).encode())
-        print(f"[viz] control -> {cmd}", flush=True)
+                         json.dumps({"cmd": cmd, **extra}).encode())
+        print(f"[viz] control -> {cmd} {extra}", flush=True)
 
     col = {"left": (60, 200, 255), "right": (60, 200, 255), "straight": (80, 255, 80),
            "stop": (60, 60, 240), "lost": (90, 90, 240)}
     win = "localization"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     while True:
-        img = canvas.copy()
         c = latest["cmd"] or {}
+        canvas, rp, px, n = maps.get(c.get("cam"), maps["rear"])   # карта активной камеры
+        img = canvas.copy()
         mt = c.get("move_type")
 
         if mt and mt != "lost" and c.get("node") is not None:
@@ -125,6 +130,13 @@ async def main():
         if c.get("paused"):
             cv2.putText(img, "PAUSED", (SIZE - 190, 34), FONT, 0.8, (60, 200, 255), 2, cv2.LINE_AA)
 
+        mode = c.get("mode")
+        if mode:                                   # режим + активная камера (dual)
+            camtxt = f"{mode.upper()}" + (f" [{c.get('cam','?')}]" if mode == "dual" else "")
+            ccol = (80, 255, 80) if c.get("cam") == "front" else (60, 200, 255)
+            cv2.putText(img, camtxt, (SIZE - 260, 74), FONT, 0.7, ccol, 2, cv2.LINE_AA)
+        cv2.putText(img, "1:rear  2:dual", (SIZE - 260, SIZE - 16), FONT, 0.5, (150, 150, 150), 1, cv2.LINE_AA)
+
         cv2.imshow(win, img)
         key = cv2.waitKey(30) & 0xFF
         if key == 27:
@@ -135,6 +147,10 @@ async def main():
             await send_control("resume")
         elif key == ord("c"):
             await send_control("reset")
+        elif key == ord("1"):
+            await send_control("set_mode", mode="rear")
+        elif key == ord("2"):
+            await send_control("set_mode", mode="dual")
         await asyncio.sleep(0.001)
 
     await nc.close()
