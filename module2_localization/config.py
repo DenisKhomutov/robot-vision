@@ -70,7 +70,7 @@ DUAL_LOST_HOLD = 3            # столько подряд потерь фро�
 DUAL_BACK_HOLD = 5            # столько подряд удачных фронт-фиксов -> возвращаемся на переднюю
 
 # NATS
-NATS_HOST = "192.168.40.48"    # хост NATS (для внешних подписчиков, напр. viz)
+NATS_HOST = "37.9.240.194"     # хост NATS (для внешних подписчиков, напр. viz)
 NATS_URL = "nats://127.0.0.1:4222"  # адрес подключения демона
 NATS_TOPIC = "robot.vision.localization"  # топик публикации команд
 NATS_CONTROL_TOPIC = "robot.vision.control"  # топик команд управления от админки (pause/resume/reset/set_map)
