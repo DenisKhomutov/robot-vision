@@ -2,20 +2,11 @@ from .pilot import Pilot
 
 
 class DualNav:
-    """Слияние двух камер: фронт ведущий, зад резерв. Плюс режим только зад.
-
-    mode "rear" — работает только задняя (как сейчас, проверено).
-    mode "dual" — ведёт фронт; после DUAL_LOST_HOLD потерь фронта активной становится
-    задняя, после DUAL_BACK_HOLD удачных фронт-фиксов возвращаемся на фронт (гистерезис,
-    чтобы не дёргаться на границе). Задний локализатор считаем только когда он нужен
-    (ленивый резерв) — иначе на jetson удваивается время кадра.
-    """
-
     def __init__(self, front_loc, rear_loc, cfg):
         self.front, self.rear, self.cfg = front_loc, rear_loc, cfg
         self.pf, self.pr = Pilot(cfg), Pilot(cfg)
         self.mode = getattr(cfg, "NAV_MODE", "rear")
-        self.active = "rear"          # какая камера сейчас ведёт (в dual)
+        self.active = "front"         # какая камера сейчас ведёт (в dual): старт с фронта
         self.front_lost = self.front_good = 0
 
     def set_mode(self, mode):
@@ -23,7 +14,7 @@ class DualNav:
             return                    # нет передней карты/источника — dual недоступен
         if mode in ("rear", "dual"):
             self.mode = mode
-            self.active = "rear"
+            self.active = "front" if mode == "dual" else "rear"
             self.front_lost = self.front_good = 0
 
     def _rear(self, rf):

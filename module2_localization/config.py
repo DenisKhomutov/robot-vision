@@ -64,8 +64,8 @@ FRONT_MAP = "map_2cam_front"  # карта передней камеры (для
 REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
-FRONT_SHM_SOCKET = "/tmp/cam_front"  # сокет передней камеры (live, dual)
-REAR_SHM_SOCKET = "/tmp/cam_rear"    # сокет задней камеры (live, dual)
+FRONT_SHM_SOCKET = "/tmp/cam_front_raw"  # AI-сокет передней (CSI IMX219), I420 1280x720
+REAR_SHM_SOCKET = "/tmp/cam_raw"         # AI-сокет задней (USB C920), I420 1280x720
 DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
 DUAL_BACK_HOLD = 5            # столько подряд удачных фронт-фиксов -> возвращаемся на переднюю
 
