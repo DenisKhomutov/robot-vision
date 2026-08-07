@@ -11,36 +11,41 @@ if str(_CORE) not in sys.path:
 _localizer = None
 
 
+def build_localizer(map_name, back_facing):
+    """Собрать локализатор для конкретной карты и направления камеры (тюнинги — из конфига)."""
+    from localizer import AlikedLocalizer
+    return AlikedLocalizer(
+        map_name,
+        kpts=config.QUERY_KPTS,
+        det_threshold=config.QUERY_DET_THRESHOLD,
+        nms_radius=config.QUERY_NMS_RADIUS,
+        max_error=config.MAX_ERROR,
+        steer=config.STEER_MODE,
+        route_cam=config.ROUTE_CAM,
+        route_nodes=config.ROUTE_NODES,
+        back_facing=back_facing,
+        match_ratio=config.MATCH_RATIO,
+        match_topk=config.MATCH_TOPK,
+        focal_fallback=config.FOCAL_FALLBACK,
+        min_pairs=config.MIN_PAIRS,
+        lookahead=config.LOOKAHEAD_NODES,
+        lookahead_min=config.LOOKAHEAD_MIN,
+        lookahead_adapt=config.LOOKAHEAD_ADAPT,
+        deadzone=config.DEADZONE_DEG,
+        stanley_k=config.STANLEY_K,
+        heading_gate=config.HEADING_GATE,
+        stop_end_nodes=config.STOP_END_NODES,
+        lag_s=config.NAV_LAG_S,
+        lag_adaptive=config.NAV_LAG_ADAPTIVE,
+        lead_max=config.NAV_LEAD_MAX,
+        lead_smooth=config.NAV_LEAD_SMOOTH,
+    )
+
+
 def get_localizer():
     global _localizer
     if _localizer is None:
-        from localizer import AlikedLocalizer
-        _localizer = AlikedLocalizer(
-            config.DEFAULT_MAP,
-            kpts=config.QUERY_KPTS,
-            det_threshold=config.QUERY_DET_THRESHOLD,
-            nms_radius=config.QUERY_NMS_RADIUS,
-            max_error=config.MAX_ERROR,
-            steer=config.STEER_MODE,
-            route_cam=config.ROUTE_CAM,
-            route_nodes=config.ROUTE_NODES,
-            back_facing=config.CAMERA_BACK,
-            match_ratio=config.MATCH_RATIO,
-            match_topk=config.MATCH_TOPK,
-            focal_fallback=config.FOCAL_FALLBACK,
-            min_pairs=config.MIN_PAIRS,
-            lookahead=config.LOOKAHEAD_NODES,
-            lookahead_min=config.LOOKAHEAD_MIN,
-            lookahead_adapt=config.LOOKAHEAD_ADAPT,
-            deadzone=config.DEADZONE_DEG,
-            stanley_k=config.STANLEY_K,
-            heading_gate=config.HEADING_GATE,
-            stop_end_nodes=config.STOP_END_NODES,
-            lag_s=config.NAV_LAG_S,
-            lag_adaptive=config.NAV_LAG_ADAPTIVE,
-            lead_max=config.NAV_LEAD_MAX,
-            lead_smooth=config.NAV_LEAD_SMOOTH,
-        )
+        _localizer = build_localizer(config.DEFAULT_MAP, config.CAMERA_BACK)
     return _localizer
 
 

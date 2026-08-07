@@ -4,7 +4,7 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "map_rig_rear"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "map_2cam_rear"   # карта по умолчанию (папка в maps/)
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 
@@ -57,6 +57,17 @@ CAM_SHM_SOCKET = "/tmp/cam_raw"  # сокет ветки fan-out GStreamer, от
 CAM_WIDTH = 1280               # ширина кадра из сокета
 CAM_HEIGHT = 720               # высота кадра из сокета
 CAM_FPS = 30                   # частота кадров из сокета
+
+# Двухкамерная навигация
+NAV_MODE = "dual"              # "rear" (только зад, готово) | "dual" (фронт ведущий, зад резерв)
+FRONT_MAP = "map_2cam_front"  # карта передней камеры (для dual)
+REAR_MAP = DEFAULT_MAP        # карта задней камеры
+FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
+REAR_CAM_BACK = True          # задняя смотрит НАЗАД
+FRONT_SHM_SOCKET = "/tmp/cam_front"  # сокет передней камеры (live, dual)
+REAR_SHM_SOCKET = "/tmp/cam_rear"    # сокет задней камеры (live, dual)
+DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
+DUAL_BACK_HOLD = 5            # столько подряд удачных фронт-фиксов -> возвращаемся на переднюю
 
 # NATS
 NATS_HOST = "192.168.40.48"    # хост NATS (для внешних подписчиков, напр. viz)
