@@ -127,6 +127,12 @@ uv run --no-sync python -m module2_localization.viz --map map_rig3
 # карта из одной камеры
 uv run --no-sync python module2_localization/tools/build_map.py --images <папка> --tag map_new
 
+# длинный последовательный маршрут: единая инкрементальная карта, без словаря
+uv run --no-sync python -m module2_localization.tools.build_map \
+    --images frames_ns1_rear --tag map_ns1_rear \
+    --det-threshold 0.04 --pairs sequential --pair-offsets 1,3,6,10,16,25 \
+    --init-image-ids 1 11
+
 # карта из 3-камерного рига (кадры синхронны, имена {время}_c{N}.jpg)
 uv run --no-sync python module2_localization/tools/build_map_rig.py \
     --videos rec3/camera-1.mkv rec3/camera-2.mkv rec3/camera-3.mkv --tag map_rig3
