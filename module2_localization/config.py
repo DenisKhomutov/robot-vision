@@ -78,7 +78,7 @@ REAR_TRAFFIC_ZONE = None       # (start, end) узлов ЗАД-карты; None
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 
 # NATS
-NATS_HOST = "37.9.240.194"     # хост NATS (для внешних подписчиков, напр. viz)
+NATS_HOST = "192.168.40.48"     # хост NATS (для внешних подписчиков, напр. viz) 37.9.240.194
 NATS_URL = "nats://127.0.0.1:4222"  # адрес подключения демона
 NATS_TOPIC = "robot.vision.localization"  # топик публикации команд
 NATS_CONTROL_TOPIC = "robot.vision.control"  # топик команд управления от админки (pause/resume/reset/set_map)
