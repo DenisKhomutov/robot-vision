@@ -21,7 +21,7 @@ class AlikedLocalizer:
                  focal_fallback=1.2, min_pairs=8, pnp_confidence=0.999, pnp_iters=1000,
                  lookahead=12, lookahead_min=5, lookahead_adapt=8.0, deadzone=4.0,
                  stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
-                 lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5):
+                 lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0):
         from hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
@@ -46,6 +46,7 @@ class AlikedLocalizer:
         self.lag_adaptive = lag_adaptive  # брать фактическое время кадра вместо lag_s
         self.lead_max = lead_max        # потолок сдвига упреждения, ед.карты (страховка от скачка v)
         self._lead_hist = deque(maxlen=lead_smooth)  # (C, t) для оценки скорости
+        self.win_nodes = win_nodes                   # окно матчинга ±узлов; 0 = весь банк
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
         m = np.load(work / "runtime.npz")
@@ -69,6 +70,7 @@ class AlikedLocalizer:
         self.mxyz = bank["xyz"]
         if "align" in m:
             self.mxyz = self.mxyz @ m["align"].T
+        self._bank_owner = bank["owner"]             # дескриптор -> индекс точки
 
         pos_by_name = dict(zip(m["names"].tolist(), m["pos"]))
         fwd_by_name = dict(zip(m["names"].tolist(), m["fwd"]))
@@ -100,6 +102,15 @@ class AlikedLocalizer:
         seg = np.linalg.norm(np.diff(self.route, axis=0), axis=1)
         self.route_cum = np.concatenate([[0.0], np.cumsum(seg)])
         self.node_step = float(np.median(seg)) if len(seg) else 1.0
+        # окно по УЗЛАМ: для каждого дескриптора — ближайший узел маршрута (точка -> node).
+        route = self.route.astype(np.float32)
+        pt_node = np.empty(len(self.mxyz), np.int64)
+        for i in range(0, len(self.mxyz), 20000):    # чанками, чтобы не раздуть память
+            seg_pts = self.mxyz[i:i + 20000].astype(np.float32)
+            d2 = ((seg_pts[:, None, :] - route[None, :, :]) ** 2).sum(2)
+            pt_node[i:i + 20000] = d2.argmin(1)
+        self._desc_node = torch.from_numpy(pt_node[self._bank_owner]).to(self.dev)
+        self._last_node = None                       # последний узел (для окна)
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
 
@@ -143,10 +154,18 @@ class AlikedLocalizer:
         best = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
         bown = torch.full((n,), -1, dtype=torch.long, device=self.dev)
         second = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
+        # окно по УЗЛАМ: есть прошлый узел -> матчим только дескрипторы узлов [node±win_nodes];
+        # нет узла (пауза/старт/потеря) -> весь банк
+        mdesc, owner = self.mdesc, self.owner
+        if self._last_node is not None and self.win_nodes > 0:
+            lo, hi = self._last_node - self.win_nodes, self._last_node + self.win_nodes
+            near = (self._desc_node >= lo) & (self._desc_node <= hi)
+            if int(near.sum()) >= 200:
+                mdesc, owner = self.mdesc[near], self.owner[near]
         with torch.inference_mode():
-            for i in range(0, len(self.owner), chunk):
-                sim = q @ self.mdesc[i:i + chunk].T
-                own = self.owner[i:i + chunk]
+            for i in range(0, len(owner), chunk):
+                sim = q @ mdesc[i:i + chunk].T
+                own = owner[i:i + chunk]
                 k = min(self.match_topk, sim.shape[1])
                 tv, ti = sim.topk(k, dim=1)
                 for c in range(k):
@@ -165,6 +184,7 @@ class AlikedLocalizer:
 
         p2d, p3d = qk[keep], self.mxyz[own_cpu[keep]]
         if len(p2d) < self.min_pairs:
+            self._last_node = None                   # потеря -> следующий кадр по всему банку
             return {"ok": False, "reason": f"мало пар: {len(p2d)}",
                     "t_ext": t_ext, "t_match": t_match}
 
@@ -192,6 +212,7 @@ class AlikedLocalizer:
                                               p2d[idx].astype(np.float64), K, dist, rvec, tvec)
         t_pnp = (time.perf_counter() - t0) * 1000
         if not ok or inl is None or len(inl) < 6:
+            self._last_node = None                   # потеря -> следующий кадр по всему банку
             return {"ok": False, "reason": "PnP не сошёлся", "n_pairs": len(p2d),
                     "inliers": 0 if inl is None else len(inl),
                     "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
@@ -208,6 +229,7 @@ class AlikedLocalizer:
         C_lead = self._lead(C, fwd, t_ext + t_match + t_pnp)
         out.update(Localizer.command(self, C_lead, fwd, mode=self.steer))
         out["C_lead"] = C_lead
+        self._last_node = out["node"]                # запомнили узел -> следующий кадр по окну
         if self.scale:
             out["dist_to_route_m"] = out["dist_to_route"] * self.scale
             out["offset_m"] = out["offset"] * self.scale
