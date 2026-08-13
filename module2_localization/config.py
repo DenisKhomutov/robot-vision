@@ -4,7 +4,7 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "map_2cam_rear"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "map_2cam_rear"   # карта по умолчанию (папка в maps/) map_ns12_rear_full_colored_fixed
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 
@@ -40,6 +40,7 @@ NAV_LAG_S = 0.18               # время задержки инференс+д
 NAV_LAG_ADAPTIVE = False       # True -> вместо NAV_LAG_S берём фактическое время текущего кадра (t_ext+t_match+t_pnp)
 NAV_LEAD_MAX = 1.5             # потолок сдвига упреждения, ед.карты — страховка от скачка измеренной скорости
 NAV_LEAD_SMOOTH = 5            # окно истории поз для оценки скорости (больше = глаже, но инертнее)
+NAV_WIN_NODES = 50            # окно матчинга: ±узлов вокруг последнего; 0 = весь банк (медленно на больших картах)
 
 # Руление
 STEER_MODE = "pursuit"         # закон руления: "pursuit" (упреждение) или "stanley"

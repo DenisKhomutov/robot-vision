@@ -39,6 +39,7 @@ def build_localizer(map_name, back_facing):
         lag_adaptive=config.NAV_LAG_ADAPTIVE,
         lead_max=config.NAV_LEAD_MAX,
         lead_smooth=config.NAV_LEAD_SMOOTH,
+        win_nodes=getattr(config, "NAV_WIN_NODES", 0),
     )
 
 
