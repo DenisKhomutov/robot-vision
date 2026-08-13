@@ -23,7 +23,6 @@ def main():
     r = pycolmap.Reconstruction(str(model))
     o = sorted(r.images.values(), key=lambda i: i.name)
     P = np.array([(-i.cam_from_world().rotation.matrix().T @ i.cam_from_world().translation) for i in o])
-    nums = np.array([int("".join(filter(str.isdigit, i.name)) or 0) for i in o])
     xyz = np.array([p.xyz for p in r.points3D.values()])
 
     lo_c, hi_c = np.percentile(xyz[:, [0, 2]], [2, 98], axis=0)
@@ -46,7 +45,7 @@ def main():
     tp = px(P[:, [0, 2]])
     med = np.median(np.linalg.norm(np.diff(P, axis=0), axis=1))
     for k in range(len(tp) - 1):
-        if np.linalg.norm(P[k + 1] - P[k]) < 30 * med and nums[k + 1] - nums[k] <= 2:
+        if np.linalg.norm(P[k + 1] - P[k]) < 30 * med:
             c = int(255 * k / len(tp))
             cv2.line(img, tuple(tp[k]), tuple(tp[k + 1]), (255 - c, 120, c), 3, cv2.LINE_AA)
     cv2.circle(img, tuple(tp[0]), 9, (120, 230, 120), -1)

@@ -18,6 +18,16 @@ VOCAB_TREE = ROOT / "data" / "vocab_tree_flickr100K_words32K.bin"
 VOCAB_URL = "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"
 
 
+def parse_offsets(value):
+    try:
+        offsets = sorted({int(item) for item in value.split(",") if item.strip()})
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("смещения должны быть целыми числами через запятую") from exc
+    if not offsets or offsets[0] < 1:
+        raise argparse.ArgumentTypeError("смещения должны быть положительными")
+    return offsets
+
+
 def log(m):
     print(f"[{time.strftime('%H:%M:%S')}] {m}", flush=True)
 
@@ -88,9 +98,24 @@ def main():
     ap.add_argument("--det-threshold", type=float, default=0.2, help="порог детекции ALIKED; "
                     "ниже -> больше (более слабых) точек. 0.05 ~= x1.8, 0.02 ~= x2.5")
     ap.add_argument("--overlap", type=int, default=10, help="последовательные пары ±N")
+    ap.add_argument("--pair-offsets", type=parse_offsets, default=None,
+                    help="вместо всех пар до overlap использовать смещения, например 1,3,6,10,16,25")
     ap.add_argument("--neighbors", type=int, default=20, help="соседей на кадр в словаре")
-    ap.add_argument("--pairs", default="vocab",
+    ap.add_argument("--pairs", default="sequential",
                     choices=["vocab", "sequential", "exhaustive", "loop"])
+    ap.add_argument("--mapper", choices=["colmap", "glomap"], default="colmap",
+                    help="colmap: единая инкрементальная SfM (по умолчанию); glomap оставлен для сравнения")
+    ap.add_argument("--init-image-ids", type=int, nargs=2, metavar=("ID1", "ID2"),
+                    help="стартовая пара COLMAP; для последовательного маршрута лучше начинать с начала")
+    ap.add_argument("--camera-model", choices=["simple-radial", "opencv"],
+                    default="simple-radial", help="модель самокалибровки без --calib; SIMPLE_RADIAL "
+                    "лучше обусловлена для одной камеры")
+    ap.add_argument("--refine-intrinsics", action="store_true",
+                    help="разрешить BA менять фокус/дисторсию (для длинного прямого маршрута "
+                         "обычно нельзя: возникает схлопывание масштаба)")
+    ap.add_argument("--colors", action=argparse.BooleanOptionalAction, default=False,
+                    help="добавить RGB-цвета 3D-точкам из исходных изображений; по умолчанию "
+                         "сохраняется бесцветная геометрия")
     ap.add_argument("--loop-head", type=int, default=25, help="loop: первых кадров у старта")
     ap.add_argument("--loop-tail", type=int, default=25, help="loop: последних кадров у финиша")
     ap.add_argument("--focal", type=float, default=None,
@@ -98,10 +123,11 @@ def main():
                          "плохо уточняется на прямых коридорах -> кривой fx -> ошибка поворотов)")
     ap.add_argument("--calib", default=None,
                     help="npz с калибровкой (K, dist, image_size) -> камера OPENCV, интринсики "
-                         "ФИКСИРУЮТСЯ в BA (не уточняются). Лучший вариант, если есть шахматка")
+                         "ФИКСИРУЮТСЯ в BA (не уточняются)")
     ap.add_argument("--masks", default=None,
                     help="папка масок (data/<...>): точки внутри маски (255) отбрасываются, "
                          "картинка не трогается — без ложных точек на кромке заливки")
+    ap.add_argument("--overwrite", action="store_true", help="явно заменить существующую карту")
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
@@ -116,16 +142,23 @@ def main():
     if not names:
         log(f"нет кадров в {imdir}")
         return 1
+    if Path(args.tag).name != args.tag:
+        log("ОШИБКА: --tag должен быть именем каталога внутри module2_localization/maps")
+        return 2
     work = ROOT / "maps" / args.tag
+    if work.exists():
+        if not args.overwrite:
+            log(f"ОШИБКА: карта {args.tag} уже существует; задайте другой --tag или --overwrite")
+            return 2
+        shutil.rmtree(work)
     work.mkdir(parents=True, exist_ok=True)
     db_path = work / "database.db"
-    if db_path.exists():
-        db_path.unlink()
-    log(f"кадров {len(names)}, точек/кадр {args.kpts}, пары {args.pairs}")
+    log(f"кадров {len(names)}, точек/кадр {args.kpts}, пары {args.pairs}, mapper {args.mapper}")
 
     idx = {n: k for k, n in enumerate(names)}
+    offsets = args.pair_offsets or list(range(1, args.overlap + 1))
     seq = {tuple(sorted((names[i], names[j]))) for i in range(len(names))
-           for j in range(i + 1, min(i + 1 + args.overlap, len(names)))}
+           for offset in offsets for j in (i + offset,) if j < len(names)}
     cam_row = None
     if args.pairs == "vocab":
         loops, cam_row = vocab_pairs(imdir, work, args.neighbors)
@@ -215,9 +248,17 @@ def main():
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, model, cw, ch, params, 0))
     else:
         f0 = args.focal if args.focal else 1.2 * max(w, h)
-        params = np.array([f0, f0, w / 2, h / 2, 0, 0, 0, 0], np.float64).tobytes()
-        db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
-        log(f"--- стартовый фокус {f0:.0f}px" + (" (задан)" if args.focal else " (догадка 1.2*сторона)"))
+        if args.camera_model == "simple-radial":
+            model_id = 2
+            params = np.array([f0, w / 2, h / 2, 0], np.float64).tobytes()
+            model_name = "SIMPLE_RADIAL"
+        else:
+            model_id = 4
+            params = np.array([f0, f0, w / 2, h / 2, 0, 0, 0, 0], np.float64).tobytes()
+            model_name = "OPENCV"
+        db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, model_id, w, h, params, 0))
+        log(f"--- камера {model_name}, стартовый фокус {f0:.0f}px" +
+            (" (задан)" if args.focal else " (догадка 1.2*сторона)"))
     for k, n in enumerate(names, 1):
         db.execute("INSERT INTO images (image_id, name, camera_id) VALUES (?,?,?)", (k, n, 1))
         kp = feats[n]["keypoints"][0].cpu().numpy().astype(np.float32)
@@ -227,6 +268,7 @@ def main():
     log(f"--- ALIKED+LightGlue: {len(pairs)} пар")
     t0 = time.perf_counter()
     written = weak = 0
+    written_pairs = []
     for c, (a, b) in enumerate(pairs):
         with torch.inference_mode():
             out = lg({"image0": feats[a], "image1": feats[b]})
@@ -240,6 +282,7 @@ def main():
             db.execute("INSERT OR REPLACE INTO matches VALUES (?,?,?,?)",
                        (i * MAX_IMAGE_ID + j, m.shape[0], 2, m.tobytes()))
             written += 1
+            written_pairs.append((a, b))
         else:
             weak += 1
         if (c + 1) % 500 == 0:
@@ -250,23 +293,51 @@ def main():
     log(f"--- матчей записано {written}, слабых {weak}")
 
     pt = work / "pairs.txt"
-    pt.write_text("".join(f"{a} {b}\n" for a, b in pairs))
+    pt.write_text("".join(f"{a} {b}\n" for a, b in written_pairs))
     if not run(["colmap", "matches_importer", "--database_path", str(db_path),
-                "--match_list_path", str(pt), "--match_type", "pairs"], "геом. проверка"):
+                "--match_list_path", str(pt), "--match_type", "pairs",
+                "--SiftMatching.num_threads", "1", "--SiftMatching.use_gpu", "0"],
+               "геом. проверка"):
         return 1
 
     sparse = work / "sparse"
     sparse.mkdir(parents=True, exist_ok=True)
-    gm = ["glomap", "mapper", "--database_path", str(db_path),
-          "--image_path", str(imdir), "--output_path", str(sparse)]
-    if args.calib:
-        gm += ["--BundleAdjustment.optimize_intrinsics", "0"]   # держим шахматочную K
-    if not run(gm, "glomap (SfM с нуля)", quiet=False):
+    if args.mapper == "colmap":
+        mapper_cmd = ["colmap", "mapper", "--database_path", str(db_path),
+                      "--image_path", str(imdir), "--output_path", str(sparse),
+                      "--Mapper.multiple_models", "0", "--Mapper.extract_colors",
+                      "1" if args.colors else "0",
+                      "--Mapper.ba_refine_principal_point", "0",
+                      "--Mapper.ba_global_images_ratio", "1000",
+                      "--Mapper.ba_global_points_ratio", "1000",
+                      "--Mapper.ba_global_images_freq", "1000000",
+                      "--Mapper.ba_global_points_freq", "100000000",
+                      "--Mapper.ba_global_max_num_iterations", "10",
+                      "--Mapper.ba_global_max_refinements", "1",
+                      "--Mapper.tri_ignore_two_view_tracks", "0",
+                      "--Mapper.abs_pose_min_num_inliers", "15",
+                      "--Mapper.abs_pose_min_inlier_ratio", "0.1"]
+        if args.calib or not args.refine_intrinsics:
+            mapper_cmd += ["--Mapper.ba_refine_focal_length", "0",
+                           "--Mapper.ba_refine_extra_params", "0"]
+        if args.init_image_ids:
+            mapper_cmd += ["--Mapper.init_image_id1", str(args.init_image_ids[0]),
+                           "--Mapper.init_image_id2", str(args.init_image_ids[1]),
+                           "--Mapper.init_min_tri_angle", "4",
+                           "--Mapper.init_max_forward_motion", "1"]
+        mapper_label = "COLMAP incremental (единая 2D-3D реконструкция)"
+    else:
+        mapper_cmd = ["glomap", "mapper", "--database_path", str(db_path),
+                      "--image_path", str(imdir), "--output_path", str(sparse)]
+        if args.calib or not args.refine_intrinsics:
+            mapper_cmd += ["--BundleAdjustment.optimize_intrinsics", "0"]
+        mapper_label = "GLOMAP global"
+    if not run(mapper_cmd, mapper_label, quiet=False):
         return 1
 
     models = sorted(p for p in sparse.iterdir() if p.is_dir())
     if not models:
-        log("glomap не собрал модель")
+        log(f"{args.mapper} не собрал модель")
         return 1
     best = max(models, key=lambda m: len(pycolmap.Reconstruction(str(m)).images))
     if best.name != "0":
@@ -277,6 +348,11 @@ def main():
     log(f"моделей {len(models)}, взята {best.name} -> 0")
 
     rec = pycolmap.Reconstruction(str(sparse0))
+    min_registered = max(2, int(0.9 * len(names)))
+    if len(rec.images) < min_registered:
+        log(f"ОШИБКА: зарегистрировано только {len(rec.images)}/{len(names)} камер "
+            f"(нужно не меньше {min_registered}); runtime-карта не создаётся")
+        return 1
     dcache = {n: feats[n]["descriptors"][0].cpu().numpy() for n in names}
     name_of = {im.image_id: im.name for im in rec.images.values()}
     desc_bank, owner, xyz = [], [], []
@@ -293,6 +369,9 @@ def main():
     log(f"--- банк: {len(xyz)} точек, {len(desc_bank)} дескрипторов, "
         f"{len(rec.images)}/{len(names)} камер, {rec.compute_mean_reprojection_error():.2f}px")
     subprocess.run(["colmap", "model_analyzer", "--path", str(sparse0)])
+    if not run([sys.executable, str(ROOT / "tools" / "export_map.py"), "--map", args.tag],
+               "экспорт runtime.npz", quiet=False):
+        return 1
     return 0
 
 
