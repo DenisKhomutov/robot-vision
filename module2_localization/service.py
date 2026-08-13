@@ -201,7 +201,10 @@ class TrafficBranch:
         self.front_zone = getattr(cfg, "FRONT_TRAFFIC_ZONE", None)
         self.rear_zone = getattr(cfg, "REAR_TRAFFIC_ZONE", None)
         self.last_cam, self.last_node = "rear", None
-        self.go = True                             # разрешено ехать (нет красного) — латч
+        # машина состояний в зоне: WAIT_RED (стоим, ждём красный, зелёный игнорим) ->
+        # WAIT_GREEN (видели красный, стоим, ждём зелёный) -> GO (едем, светофор больше
+        # не смотрим до выезда из зоны). Так робот не выедет на угасающий зелёный.
+        self.state = "WAIT_RED"
 
     @staticmethod
     def _in(zone, node):
@@ -215,20 +218,29 @@ class TrafficBranch:
         zone = self.front_zone if cam == "front" else self.rear_zone
         return self._in(zone, node)
 
+    @property
+    def go(self):
+        return self.state == "GO"
+
     def update(self, in_zone, frame_bgr):
-        """Детекция на переднем кадре в зоне; латч go/stop: красный -> стоп, зелёный -> ехать,
-        иначе держим предыдущее. Вне зоны светофор не действует -> go=True."""
+        """Машина состояний в зоне. Вне зоны — сброс в WAIT_RED (для следующего въезда),
+        едем. WAIT_RED: стоим, ждём КРАСНЫЙ (зелёный игнорим — мог угасать). WAIT_GREEN:
+        стоим, ждём ЗЕЛЁНЫЙ. GO: едем, светофор до выезда из зоны не смотрим."""
         if not in_zone:
-            self.go = True
+            self.state = "WAIT_RED"                # покинули зону -> сброс
             return None
+        if self.state == "GO":
+            return None                            # в зоне уже едем, детекцию не гоняем
         from PIL import Image
         r = self._analyze(Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)))
         sig = (r.get("signal") or "").lower()
-        if "red" in sig or "крас" in sig:
-            self.go = False
-        elif "green" in sig or "зел" in sig:
-            self.go = True
-        return r                                   # {"status","signal","confidence"}
+        is_red = "red" in sig or "крас" in sig or "stop" in sig
+        is_green = "green" in sig or "зел" in sig or "go" in sig
+        if self.state == "WAIT_RED" and is_red:
+            self.state = "WAIT_GREEN"
+        elif self.state == "WAIT_GREEN" and is_green:
+            self.state = "GO"
+        return r
 
 
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None) -> None:
@@ -241,19 +253,17 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
             cmd = nav.step(fframe, rframe)
-            # светофор: детекция на переднем кадре, КРАСНЫЙ -> демон сам отдаёт stop
-            # (мозг только исполняет команду, решение здесь)
+            # светофор: детекция на переднем кадре. Решение ПОЛНОСТЬЮ здесь, мозгу
+            # отдельно ничего не шлём — только перебиваем команду навигации на stop,
+            # пока машина состояний не разрешит ехать (state GO).
             if traffic and fframe is not None:
                 inz = traffic.in_zone(cmd.get("cam"), cmd.get("node"))
                 tl = traffic.update(inz, fframe)
-                if not traffic.go and cmd.get("move_type") != "lost":
+                if inz and not traffic.go and cmd.get("move_type") != "lost":
                     cmd["move_type"], cmd["deg"] = "stop", 0.0
-                    cmd["traffic"] = "red"
+                    cmd["traffic"] = traffic.state       # WAIT_RED / WAIT_GREEN
                 if tl is not None:
-                    print(f"[TL] {json.dumps(tl, ensure_ascii=False)} go={traffic.go}", flush=True)
-                    if nc:
-                        await nc.publish(config.NATS_TRAFFIC_TOPIC,
-                                         json.dumps(tl, ensure_ascii=False).encode())
+                    print(f"[TL] {json.dumps(tl, ensure_ascii=False)} state={traffic.state}", flush=True)
             payload = json.dumps(cmd, ensure_ascii=False).encode()
             print(payload.decode(), flush=True)
             if nc:

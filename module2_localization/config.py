@@ -4,7 +4,7 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "map_ns12_rear_full_colored_fixed"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "map_2cam_rear"   # карта по умолчанию (папка в maps/)
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 
@@ -72,9 +72,9 @@ DUAL_BACK_HOLD = 5            # столько подряд удачных фр�
 # Светофор (модуль 1) — детекция ВСЕГДА на кадре ПЕРЕДНЕЙ камеры (светофоры впереди),
 # но включается только в ЗОНЕ. Зону выбирает АКТИВНАЯ навигационная камера (DualNav):
 # ведёт фронт -> зона фронт-карты; фронт потерян, ведёт зад -> зона зад-карты.
-TRAFFIC_LIGHT_ENABLED = True   # гонять детекцию+классификацию светофора
+TRAFFIC_LIGHT_ENABLED = False   # гонять детекцию+классификацию светофора
 FRONT_TRAFFIC_ZONE = None      # (start, end) узлов ФРОНТ-карты; None = вся трасса (зона ещё не задана)
-REAR_TRAFFIC_ZONE = None       # (start, end) узлов ЗАД-карты; None = вся трасса
+REAR_TRAFFIC_ZONE = (1074, 1177)       # (start, end) узлов ЗАД-карты; None = вся трасса
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 
 # NATS
