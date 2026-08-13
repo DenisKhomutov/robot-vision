@@ -185,7 +185,52 @@ def make_control_handler(nav):
     return on_control
 
 
-async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None) -> None:
+class TrafficBranch:
+    """Ветка светофора: детекция+классификация ВСЕГДА на переднем кадре, но публикуем
+    только когда активная навигация в ЗОНЕ. Зону выбирает активная камера DualNav:
+    ведёт фронт -> зона фронт-карты, ведёт зад -> зона зад-карты. Последнюю позу помним
+    (обе камеры потеряны -> навигация стоп, но светофор продолжает по последней зоне)."""
+
+    def __init__(self, cfg):
+        import module1_traffic_light as tl
+        tl.config.DET_CONF = getattr(cfg, "TRAFFIC_DET_CONF", tl.config.DET_CONF)
+        tl.init_models()
+        from module1_traffic_light.services.traffic_light_service import analyze
+        self._analyze = analyze
+        self.front_zone = getattr(cfg, "FRONT_TRAFFIC_ZONE", None)
+        self.rear_zone = getattr(cfg, "REAR_TRAFFIC_ZONE", None)
+        self.last_cam, self.last_node = "rear", None
+        self.go = True                             # разрешено ехать (нет красного) — латч
+
+    @staticmethod
+    def _in(zone, node):
+        return zone is None or (node is not None and zone[0] <= node <= zone[1])
+
+    def in_zone(self, cam, node):
+        if node is not None:                       # запоминаем последнюю известную позу
+            self.last_cam, self.last_node = cam or self.last_cam, node
+        cam = cam or self.last_cam
+        node = node if node is not None else self.last_node
+        zone = self.front_zone if cam == "front" else self.rear_zone
+        return self._in(zone, node)
+
+    def update(self, in_zone, frame_bgr):
+        """Детекция на переднем кадре в зоне; латч go/stop: красный -> стоп, зелёный -> ехать,
+        иначе держим предыдущее. Вне зоны светофор не действует -> go=True."""
+        if not in_zone:
+            self.go = True
+            return None
+        from PIL import Image
+        r = self._analyze(Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)))
+        sig = (r.get("signal") or "").lower()
+        if "red" in sig or "крас" in sig:
+            self.go = False
+        elif "green" in sig or "зел" in sig:
+            self.go = True
+        return r                                   # {"status","signal","confidence"}
+
+
+async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None) -> None:
     if nc:
         await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav))
     last_stamp = -1
@@ -195,6 +240,19 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None) -> Non
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
             cmd = nav.step(fframe, rframe)
+            # светофор: детекция на переднем кадре, КРАСНЫЙ -> демон сам отдаёт stop
+            # (мозг только исполняет команду, решение здесь)
+            if traffic and fframe is not None:
+                inz = traffic.in_zone(cmd.get("cam"), cmd.get("node"))
+                tl = traffic.update(inz, fframe)
+                if not traffic.go and cmd.get("move_type") != "lost":
+                    cmd["move_type"], cmd["deg"] = "stop", 0.0
+                    cmd["traffic"] = "red"
+                if tl is not None:
+                    print(f"[TL] {json.dumps(tl, ensure_ascii=False)} go={traffic.go}", flush=True)
+                    if nc:
+                        await nc.publish(config.NATS_TRAFFIC_TOPIC,
+                                         json.dumps(tl, ensure_ascii=False).encode())
             payload = json.dumps(cmd, ensure_ascii=False).encode()
             print(payload.decode(), flush=True)
             if nc:
@@ -225,34 +283,53 @@ async def main() -> int:
     ap.add_argument("--no-nats", action="store_true", help="только терминал, без NATS")
     args = ap.parse_args()
 
-    # dual включается флагом --dual, парой видео, или NAV_MODE=dual в конфиге;
-    # но явный одиночный источник (--video/--shm/--camera) принудительно оставляет только зад
-    dual = (args.dual or config.NAV_MODE == "dual" or (args.video_front and args.video_rear)) \
-        and not (args.video or args.shm or args.camera)
+    # dual (фронт-локализатор) — только явно: флаг --dual или NAV_MODE=dual (нужна ГОТОВАЯ фронт-карта)
+    dual = args.dual or config.NAV_MODE == "dual"
 
-    front_src = front_loc = None
-    if dual:                                         # ── двухкамерный: фронт+зад
-        if args.video_front and args.video_rear:
-            front_src = VideoFileSource(args.video_front, step=args.source_step)
-            rear_src = VideoFileSource(args.video_rear, step=args.source_step)
-        else:
-            front_src = _shm(config.FRONT_SHM_SOCKET)
-            rear_src = _shm(config.REAR_SHM_SOCKET)
+    # ── ЗАДНИЙ источник (навигация)
+    rear_video = args.video_rear or args.video
+    if rear_video:
+        rear_src = VideoFileSource(rear_video, step=args.source_step)
+    elif args.shm:
+        rear_src = _shm(args.shm)
+    elif dual:
+        rear_src = _shm(config.REAR_SHM_SOCKET)
+    else:
+        rear_src = CameraSource(args.camera or config.CAMERA)
+
+    # ── локализаторы
+    front_loc = None
+    if dual:
         front_loc = build_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK)
         rear_loc = build_localizer(config.REAR_MAP, config.REAR_CAM_BACK)
-    else:                                            # ── только зад (как сейчас)
-        if args.video:
-            rear_src = VideoFileSource(args.video, step=args.source_step)
-        elif args.shm:
-            rear_src = _shm(args.shm)
-        else:
-            rear_src = CameraSource(args.camera or config.CAMERA)
+    else:
         rear_loc = get_localizer()
+
+    # ── ПЕРЕДНИЙ источник: для dual-навигации И/ИЛИ для светофора (карта фронта не нужна)
+    front_src = None
+    if dual or getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
+        try:
+            if args.video_front:
+                front_src = VideoFileSource(args.video_front, step=args.source_step)
+            else:
+                front_src = _shm(config.FRONT_SHM_SOCKET)
+        except Exception as e:  # noqa: BLE001
+            print(f"[перёд] нет передней камеры ({e})", flush=True)
+            if dual:
+                return 1
 
     nav = DualNav(front_loc, rear_loc, config)
     if args.mode:
         nav.set_mode(args.mode)
     print(f"[nav] режим {nav.mode}" + ("  (dual доступен)" if front_loc else ""), flush=True)
+
+    traffic = None
+    if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
+        if front_src is None:
+            print("[TL] светофор включён, но нет передней камеры (нужен dual/два источника) — пропуск", flush=True)
+        else:
+            traffic = TrafficBranch(config)
+            print("[TL] ветка светофора активна (детекция на переднем кадре, гейт по зоне)", flush=True)
 
     nc = None
     if not args.no_nats:
@@ -272,7 +349,7 @@ async def main() -> int:
         front_src.start()
     rear_src.start()
     try:
-        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt)
+        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic)
     finally:
         if front_src:
             front_src.stop()
