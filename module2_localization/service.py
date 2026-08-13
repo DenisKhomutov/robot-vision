@@ -193,7 +193,8 @@ class TrafficBranch:
 
     def __init__(self, cfg):
         import module1_traffic_light as tl
-        tl.config.DET_CONF = getattr(cfg, "TRAFFIC_DET_CONF", tl.config.DET_CONF)
+        from module1_traffic_light import config as tl_config
+        tl_config.DET_CONF = getattr(cfg, "TRAFFIC_DET_CONF", tl_config.DET_CONF)
         tl.init_models()
         from module1_traffic_light.services.traffic_light_service import analyze
         self._analyze = analyze
