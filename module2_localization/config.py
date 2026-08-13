@@ -4,7 +4,7 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "map_2cam_rear"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "map_ns12_rear_full_colored_fixed"   # карта по умолчанию (папка в maps/)
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 
@@ -59,8 +59,8 @@ CAM_HEIGHT = 720               # высота кадра из сокета
 CAM_FPS = 30                   # частота кадров из сокета
 
 # Двухкамерная навигация
-NAV_MODE = "dual"              # "rear" (только зад, готово) | "dual" (фронт ведущий, зад резерв)
-FRONT_MAP = "map_2cam_front"  # карта передней камеры (для dual)
+NAV_MODE = "rear"             # "rear" (только зад, готово) | "dual" (нужна ГОТОВАЯ фронт-карта)
+FRONT_MAP = "map_ns12_front_full_uncolored"  # карта передней камеры (для dual; пока без runtime.npz)
 REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
@@ -69,8 +69,17 @@ REAR_SHM_SOCKET = "/tmp/cam_raw"         # AI-сокет задней (USB C920)
 DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
 DUAL_BACK_HOLD = 5            # столько подряд удачных фронт-фиксов -> возвращаемся на переднюю
 
+# Светофор (модуль 1) — детекция ВСЕГДА на кадре ПЕРЕДНЕЙ камеры (светофоры впереди),
+# но включается только в ЗОНЕ. Зону выбирает АКТИВНАЯ навигационная камера (DualNav):
+# ведёт фронт -> зона фронт-карты; фронт потерян, ведёт зад -> зона зад-карты.
+TRAFFIC_LIGHT_ENABLED = True   # гонять детекцию+классификацию светофора
+FRONT_TRAFFIC_ZONE = None      # (start, end) узлов ФРОНТ-карты; None = вся трасса (зона ещё не задана)
+REAR_TRAFFIC_ZONE = None       # (start, end) узлов ЗАД-карты; None = вся трасса
+TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
+
 # NATS
 NATS_HOST = "37.9.240.194"     # хост NATS (для внешних подписчиков, напр. viz)
 NATS_URL = "nats://127.0.0.1:4222"  # адрес подключения демона
 NATS_TOPIC = "robot.vision.localization"  # топик публикации команд
 NATS_CONTROL_TOPIC = "robot.vision.control"  # топик команд управления от админки (pause/resume/reset/set_map)
+NATS_TRAFFIC_TOPIC = "robot.vision.traffic_light"  # топик сигналов светофора
