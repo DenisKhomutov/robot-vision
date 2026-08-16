@@ -32,6 +32,7 @@ class Pilot:
     def __init__(self, cfg):
         self.cfg = cfg
         self.chist = deque(maxlen=getattr(cfg, "POSE_HISTORY", 5))
+        self.nhist = deque(maxlen=getattr(cfg, "POSE_HISTORY", 5))
         self.last_cmd = ("straight", 0.0)
         self.stopped = False
         self.stop_hits = 0
@@ -76,8 +77,14 @@ class Pilot:
         if r and r.get("ok"):
             self.last_node, self.last_fix_t = r["node"], now
             self.chist.append(r["C"])
+            self.nhist.append(r["node"])
             d = (self.chist[-1] - self.chist[0]) if len(self.chist) >= 2 else np.zeros(3)
-            if float(np.linalg.norm(d)) > cfg.MOVE_EPS:
+            # На плотной уличной карте перемещение за POSE_HISTORY кадров может
+            # быть меньше MOVE_EPS, хотя робот действительно едет. Раньше это
+            # навсегда защёлкивало первую команду поворота. Изменение ближайшего
+            # узла маршрута является независимым признаком движения.
+            node_progress = len(self.nhist) >= 2 and len(set(self.nhist)) > 1
+            if float(np.linalg.norm(d)) > cfg.MOVE_EPS or node_progress:
                 self.moved_once = True
                 self.last_cmd = (r["move_type"], r["bearing_deg"])
             elif self.moved_once:

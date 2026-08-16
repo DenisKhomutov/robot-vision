@@ -89,7 +89,22 @@ def main():
     ap.add_argument("--route-cam", default=None, help="риг-карта: маршрут по одной камере, напр. _c2")
     ap.add_argument("--back", action="store_true", help="камера смотрит назад по ходу движения")
     ap.add_argument("--route-nodes", type=int, default=None, help="обрезка маршрута (по умолч. из конфига)")
+    ap.add_argument("--stop-at-node", type=int, default=None,
+                    help="остановить видеопрогон после достижения этого узла, не обрезая маршрут")
+    ap.add_argument("--lookahead", type=int, default=None)
+    ap.add_argument("--lookahead-min", type=int, default=None)
+    ap.add_argument("--lookahead-adapt", type=float, default=None)
+    ap.add_argument("--lag-s", type=float, default=None)
+    ap.add_argument("--lead-max", type=float, default=None)
+    ap.add_argument("--lead-smooth", type=int, default=None)
     args = ap.parse_args()
+
+    lookahead = cfg.LOOKAHEAD_NODES if args.lookahead is None else args.lookahead
+    lookahead_min = cfg.LOOKAHEAD_MIN if args.lookahead_min is None else args.lookahead_min
+    lookahead_adapt = cfg.LOOKAHEAD_ADAPT if args.lookahead_adapt is None else args.lookahead_adapt
+    lag_s = cfg.NAV_LAG_S if args.lag_s is None else args.lag_s
+    lead_max = cfg.NAV_LEAD_MAX if args.lead_max is None else args.lead_max
+    lead_smooth = cfg.NAV_LEAD_SMOOTH if args.lead_smooth is None else args.lead_smooth
 
     loc = AlikedLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
@@ -98,10 +113,13 @@ def main():
                           back_facing=args.back,
                           match_ratio=cfg.MATCH_RATIO, match_topk=cfg.MATCH_TOPK,
                           focal_fallback=cfg.FOCAL_FALLBACK, min_pairs=cfg.MIN_PAIRS,
-                          lookahead=cfg.LOOKAHEAD_NODES, lookahead_min=cfg.LOOKAHEAD_MIN,
-                          lookahead_adapt=cfg.LOOKAHEAD_ADAPT, deadzone=cfg.DEADZONE_DEG,
+                          lookahead=lookahead, lookahead_min=lookahead_min,
+                          lookahead_adapt=lookahead_adapt, deadzone=cfg.DEADZONE_DEG,
                           stanley_k=cfg.STANLEY_K, heading_gate=cfg.HEADING_GATE,
-                          stop_end_nodes=cfg.STOP_END_NODES)
+                          stop_end_nodes=cfg.STOP_END_NODES,
+                          lag_s=lag_s, lag_adaptive=cfg.NAV_LAG_ADAPTIVE,
+                          lead_max=lead_max, lead_smooth=lead_smooth,
+                          win_nodes=cfg.NAV_WIN_NODES)
     canvas, px = build_canvas(loc, PANE)
     route_px = px(loc.route[:, [0, 2]])
 
@@ -139,12 +157,15 @@ def main():
         if r["ok"] and (r["inliers"] < args.min_inliers or ratio < args.min_inlier_ratio):
             r = {"ok": False, "inliers": r["inliers"]}
         cmd = pilot.step(r, now=idx / args.fps)
-        good = cmd["move_type"] != "lost"
+        command_good = cmd["move_type"] != "lost"
+        good = False
         if pilot.accepted:
+            good = True
             ok_n += 1
             trail.append(px(r["C"][[0, 2]])[0])
             last = r
-        elif good and last is not None:
+        elif command_good and last is not None:
+            good = True
             r = dict(last)
             r["move_type"], r["bearing_deg"] = "stop", 0.0
 
@@ -164,7 +185,7 @@ def main():
             else:
                 cv2.line(m, c, nearest, (0, 170, 255), 2, cv2.LINE_AA)
             cv2.circle(m, nearest, 8, (120, 255, 120), 2)
-            pth = px(predict_path(loc, r["C"], r["fwd"], args.mode)[:, [0, 2]])
+            pth = px(predict_path(loc, r.get("C_lead", r["C"]), r["fwd"], args.mode)[:, [0, 2]])
             for a2, b2 in zip(pth[:-1], pth[1:]):
                 cv2.line(m, tuple(a2), tuple(b2), (0, 255, 0), 2, cv2.LINE_AA)
             head = r["fwd"] / (np.linalg.norm(r["fwd"]) + 1e-9)
@@ -198,6 +219,10 @@ def main():
                     (W - 640, 38), FONT, 0.7, (150, 150, 150), 2)
         cv2.putText(bar, args.map, (W - 640, 74), FONT, 0.6, (110, 110, 110), 1)
         vw.write(np.vstack([top, bar]))
+
+        if args.stop_at_node is not None and pilot.accepted and r["node"] >= args.stop_at_node:
+            print(f"[стоп] достигнут узел {r['node']} >= {args.stop_at_node}", flush=True)
+            break
 
         if kept % 25 == 0:
             el = time.perf_counter() - t_start

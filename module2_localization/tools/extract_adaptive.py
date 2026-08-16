@@ -53,12 +53,24 @@ def main() -> int:
                     help="целевой сдвиг картинки между соседними кадрами, пикселей")
     ap.add_argument("--min-gap", type=int, default=2, help="не чаще, чем каждый N-й кадр видео")
     ap.add_argument("--max-gap", type=int, default=15, help="не реже, чем каждый N-й")
+    ap.add_argument("--fixed-gap", type=int, default=None,
+                    help="фиксированный шаг по исходному видео; отключает учащение на поворотах. "
+                         "Для уличной SfM рекомендуется 8")
     ap.add_argument("--min-move", type=float, default=2.0,
                     help="сдвиг картинки (px при 1280) ниже которого робот считается СТОЯЩИМ -> "
                          "кадр не берём (иначе стоянка копит нулевые базы и схлопывает карту)")
     ap.add_argument("--out", default=None, help="по умолчанию frames_4f_adaptive_<v1|v2>")
     ap.add_argument("--overwrite", action="store_true", help="явно заменить существующий каталог кадров")
     args = ap.parse_args()
+
+    if args.fixed_gap is not None:
+        if args.fixed_gap < 1:
+            log("ОШИБКА: --fixed-gap должен быть >= 1")
+            return 2
+        args.min_gap = args.fixed_gap
+        args.max_gap = args.fixed_gap
+        # В фиксированном режиме порог shift не должен вызывать раннее сохранение.
+        args.shift = 1_000_000.0
 
     if args.min_gap < 1 or args.max_gap < args.min_gap:
         log("ОШИБКА: нужно 1 <= min-gap <= max-gap")
@@ -103,7 +115,12 @@ def main() -> int:
     h, w = frame.shape[:2]
     pts = grid_points(w, h)
     log(f"адаптивная нарезка {src.name}: {total} кадров {w}x{h} @ {fps:.0f} fps")
-    log(f"режу при сдвиге >= {shift:.1f}px (порог {args.shift:.0f} для 1280), шаг {args.min_gap}-{args.max_gap}")
+    if args.fixed_gap is not None:
+        log(f"фиксированная нарезка: шаг {args.fixed_gap} кадров видео, "
+            f"стояние < {min_move:.1f}px исключается")
+    else:
+        log(f"режу при сдвиге >= {shift:.1f}px (порог {args.shift:.0f} для 1280), "
+            f"шаг {args.min_gap}-{args.max_gap}")
 
     if not cv2.imwrite(str(out / "000000.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):
         log("ОШИБКА: не удалось записать первый кадр")
@@ -158,6 +175,7 @@ def main() -> int:
         "min_move_px_1280": args.min_move,
         "min_gap": args.min_gap,
         "max_gap": args.max_gap,
+        "fixed_gap": args.fixed_gap,
     }, ensure_ascii=False, indent=2))
     log(f"для сравнения, равномерные 3 fps дали бы {total//10} кадров")
     return 0
