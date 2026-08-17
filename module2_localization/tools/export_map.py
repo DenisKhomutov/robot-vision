@@ -26,6 +26,11 @@ def intrinsics(cam):
     if name == "OPENCV":
         fx, fy, cx, cy, k1, k2, p1, p2 = p
         return (fx, fy, cx, cy), [k1, k2, p1, p2]
+    if name == "FULL_OPENCV":
+        # COLMAP FULL_OPENCV uses the same rational distortion ordering accepted
+        # by OpenCV solvePnP: k1, k2, p1, p2, k3, k4, k5, k6.
+        fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6 = p
+        return (fx, fy, cx, cy), [k1, k2, p1, p2, k3, k4, k5, k6]
     raise SystemExit(f"модель камеры {name} пока не поддержана экспортом")
 
 
