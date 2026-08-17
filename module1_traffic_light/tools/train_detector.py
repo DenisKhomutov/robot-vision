@@ -35,10 +35,17 @@ def main():
     ap.add_argument("--data", required=True, help="путь к data.yaml датасета")
     ap.add_argument("--weights", default=config.DETECTOR_WEIGHTS,
                     help="стартовые веса (по умолчанию текущий best_det.pt -> дообучение)")
-    ap.add_argument("--epochs", type=int, default=50)
+    ap.add_argument("--epochs", type=int, default=60, help="потолок; реально остановит --patience")
     ap.add_argument("--imgsz", type=int, default=config.DET_IMGSZ)
     ap.add_argument("--batch", type=int, default=16)
-    ap.add_argument("--patience", type=int, default=15, help="ранняя остановка, эпох без улучшения")
+    ap.add_argument("--patience", type=int, default=10,
+                    help="ранняя остановка, эпох без улучшения val (меньше -> для узкого датасета)")
+    ap.add_argument("--freeze", type=int, default=10,
+                    help="заморозить первые N слоёв backbone (общие признаки не трогаем, "
+                         "дообучаем только специфичные под новый маршрут слои); 0 = не морозить")
+    ap.add_argument("--lr0", type=float, default=0.001,
+                    help="стартовый learning rate (ниже, чем при обучении с нуля ~0.01, "
+                         "чтобы не увести веса далеко от исходной точки)")
     ap.add_argument("--device", default=None, help="cuda/cpu/0,1,...; по умолчанию auto")
     ap.add_argument("--project", default=str(Path(config.DETECTOR_WEIGHTS).resolve().parents[1] / "runs" / "detect"))
     ap.add_argument("--name", default="finetune")
@@ -52,7 +59,8 @@ def main():
     device = args.device or ("0" if torch.cuda.is_available() else "cpu")
     print(f"веса: {args.weights}")
     print(f"датасет: {args.data}")
-    print(f"устройство: {device}, epochs={args.epochs}, imgsz={args.imgsz}, batch={args.batch}")
+    print(f"устройство: {device}, epochs={args.epochs} (потолок), patience={args.patience}, "
+          f"imgsz={args.imgsz}, batch={args.batch}, freeze={args.freeze}, lr0={args.lr0}")
 
     model = YOLO(args.weights)
     results = model.train(
@@ -61,6 +69,8 @@ def main():
         imgsz=args.imgsz,
         batch=args.batch,
         patience=args.patience,
+        freeze=args.freeze if args.freeze > 0 else None,
+        lr0=args.lr0,
         device=device,
         project=args.project,
         name=args.name,

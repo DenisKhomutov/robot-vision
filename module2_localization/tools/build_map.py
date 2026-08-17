@@ -128,6 +128,9 @@ def main():
                     help="папка масок (data/<...>): точки внутри маски (255) отбрасываются, "
                          "картинка не трогается — без ложных точек на кромке заливки")
     ap.add_argument("--overwrite", action="store_true", help="явно заменить существующую карту")
+    ap.add_argument("--prepare-only", action="store_true",
+                    help="подготовить database.db с ALIKED/LightGlue и геометрической проверкой, "
+                         "но не запускать mapper")
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
@@ -300,6 +303,11 @@ def main():
                "геом. проверка"):
         return 1
 
+    if args.prepare_only:
+        log(f"--- база подготовлена: {db_path}")
+        log("--- mapper пропущен (--prepare-only)")
+        return 0
+
     sparse = work / "sparse"
     sparse.mkdir(parents=True, exist_ok=True)
     if args.mapper == "colmap":
@@ -373,6 +381,37 @@ def main():
     if not run([sys.executable, str(ROOT / "tools" / "export_map.py"), "--map", args.tag],
                "экспорт runtime.npz", quiet=False):
         return 1
+
+    # Always produce a self-contained model for the raw COLMAP GUI.  Merely
+    # writing image_path to project.ini is not robust: an already opened GUI
+    # may retain another project path.  Absolute names in the GUI-only model
+    # make image viewing independent of the GUI's current options.
+    gui = work / "gui"
+    gui_model = gui / "sparse" / "0"
+    gui_images = gui / "images"
+    gui_images.mkdir(parents=True, exist_ok=True)
+    gui_model.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        src, dst = (imdir / name).resolve(), gui_images / name
+        try:
+            dst.hardlink_to(src)
+        except OSError:
+            shutil.copy2(src, dst)
+    gui_rec = pycolmap.Reconstruction(str(sparse0))
+    for image in gui_rec.images.values():
+        image.name = str((gui_images / image.name).resolve())
+    gui_rec.write_binary(str(gui_model))
+    (gui_model / "project.ini").write_text(
+        "log_to_stderr=true\n"
+        f"database_path={db_path.resolve()}\n"
+        f"image_path={gui_images.resolve()}\n",
+        encoding="utf-8",
+    )
+    missing = [image.name for image in gui_rec.images.values() if not Path(image.name).is_file()]
+    if missing:
+        log(f"ОШИБКА GUI-пакета: отсутствует {len(missing)} изображений")
+        return 1
+    log(f"--- GUI: {gui_model}, фотографий {len(names)}, абсолютные пути встроены в модель")
     return 0
 
 
