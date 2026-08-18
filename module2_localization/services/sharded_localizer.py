@@ -111,7 +111,11 @@ class ShardedLocalizer:
         item = self.shards[self.index]
         if self._pending_index is None:
             return False
-        return self._pending_index > self.index and global_node >= int(item["core_global_stop_exclusive"])
+        # Переходим внутри физического перекрытия, как только соседняя карта дала
+        # confirm_fixes согласованных фикса. Ожидание core-границы оставляло робота
+        # на деградирующем старом банке и создавало LOST прямо перед переключением.
+        transition_start = int(item["core_global_stop_exclusive"]) - self.preload_nodes
+        return self._pending_index > self.index and global_node >= transition_start
 
     def _decorate(self, result: dict, switched: bool = False) -> dict:
         result["_map_name"] = self.current_map

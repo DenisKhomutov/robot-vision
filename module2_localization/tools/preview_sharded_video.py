@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from collections import deque
 from pathlib import Path
@@ -62,6 +63,7 @@ def main() -> int:
     parser.add_argument("--fps", type=float, default=None)
     parser.add_argument("--traffic", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-frames", type=int, default=None, help="ограничение для короткой проверки")
+    parser.add_argument("--diagnostics", default=None, help="JSONL с результатом каждого обработанного кадра")
     args = parser.parse_args()
 
     localizer = build_runtime_localizer(args.map, False)
@@ -84,6 +86,8 @@ def main() -> int:
         raise RuntimeError(f"не удалось открыть writer {output}")
 
     source_index = processed = fixed = 0
+    diagnostics_path = Path(args.diagnostics) if args.diagnostics else output.with_suffix(".jsonl")
+    diagnostics = diagnostics_path.open("w", encoding="utf-8")
     started = time.perf_counter()
     timings = []
     active_map = args.map
@@ -117,6 +121,14 @@ def main() -> int:
         global_node = None if command.get("node") is None else int(command["node"]) + offset
         command["global_node"] = global_node
         command["map"] = map_name
+        diagnostics.write(json.dumps({
+            "processed": processed, "source_frame": source_index, "map": map_name,
+            "local_node": command.get("node"), "global_node": global_node,
+            "ok": bool(result.get("ok")), "accepted": bool(pilot.accepted),
+            "inliers": result.get("inliers"), "pairs": result.get("pairs"),
+            "reason": result.get("reason"), "switched": switched,
+            "elapsed_ms": round(elapsed_ms, 2), "command": command.get("move_type"),
+        }, ensure_ascii=False) + "\n")
 
         zone = config.TRAFFIC_ZONES.get(map_name)
         in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]
@@ -188,6 +200,7 @@ def main() -> int:
 
     capture.release()
     writer.release()
+    diagnostics.close()
     if hasattr(localizer, "close"):
         localizer.close()
     median = float(np.median(timings)) if timings else 0.0
