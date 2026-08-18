@@ -29,6 +29,8 @@ class ShardedLocalizer:
         confirm_fixes: int = 2,
         min_inliers: int = 20,
         preload_all: bool = False,
+        full_recovery: bool = False,
+        recovery_min_inliers: int = 35,
     ) -> None:
         self.maps_dir = maps_dir
         self.back_facing = back_facing
@@ -36,6 +38,7 @@ class ShardedLocalizer:
         self.preload_nodes = preload_nodes
         self.confirm_fixes = confirm_fixes
         self.min_inliers = min_inliers
+        self.recovery_min_inliers = recovery_min_inliers
         self.shards = self._load_chain(start_map)
         self.index = next(i for i, item in enumerate(self.shards) if item["map"] == start_map)
         self.current = factory(start_map, back_facing)
@@ -56,6 +59,21 @@ class ShardedLocalizer:
                     LOGGER.info("загрузка шарда в память %s", item["map"])
                     self._loaded[i] = factory(str(item["map"]), back_facing)
             LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
+        self._recovery = None
+        self.recovery_map = str(self.shards[0].get("source_map", ""))
+        self._recovery_calls = 0
+        self._recovery_fixes = 0
+        if full_recovery:
+            if not self.recovery_map:
+                raise RuntimeError("manifest шардов не содержит source_map для recovery")
+            required = (self.maps_dir / self.recovery_map / "runtime.npz",
+                        self.maps_dir / self.recovery_map / "aliked_bank.npz")
+            if not all(path.exists() for path in required):
+                raise RuntimeError(f"нет полного runtime-комплекта recovery: {self.recovery_map}")
+            started = time.monotonic()
+            self._recovery = factory(self.recovery_map, back_facing)
+            LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
+                        time.monotonic() - started)
 
     def _load_chain(self, start_map: str) -> list[dict]:
         for manifest in self.maps_dir.glob("*_manifest.json"):
@@ -126,8 +144,65 @@ class ShardedLocalizer:
             result["_map_switched"] = True
         return result
 
+    def _index_for_global_node(self, global_node: int) -> int:
+        for i, item in enumerate(self.shards):
+            if global_node < int(item["core_global_stop_exclusive"]):
+                return i
+        return len(self.shards) - 1
+
+    def _recover(self, frame: object) -> dict | None:
+        if self._recovery is None:
+            return None
+        self._recovery_calls += 1
+        recovered = self._recovery.locate(frame)
+        if not recovered.get("ok") or recovered.get("inliers", 0) < self.recovery_min_inliers:
+            return None
+        global_node = recovered.get("node")
+        if global_node is None:
+            return None
+        global_node = int(global_node)
+        target = self._index_for_global_node(global_node)
+        if target not in self._loaded:
+            # Обычно недостижимо при preload_all, но recovery не должен зависеть
+            # от этой настройки.
+            name = str(self.shards[target]["map"])
+            self._loaded[target] = self.factory(name, self.back_facing)
+        switched = target != self.index
+        self.index = target
+        self.current = self._loaded[target]
+        self.current_map = str(self.shards[target]["map"])
+        self.node_offset = int(self.shards[target]["global_node_start"])
+        self._pending = None
+        self._pending_index = None
+        self._future = None
+        self._pending_good = 0
+        self._preload_started = None
+        self._last_global_node = global_node
+        # Pilot работает с локальными node текущего шарда. Геометрическая команда
+        # полной и shard-карты находится в одной системе координат, поэтому
+        # переводим только индексы маршрута.
+        recovered = dict(recovered)
+        recovered["node"] = global_node - self.node_offset
+        if recovered.get("target_node") is not None:
+            recovered["target_node"] = int(recovered["target_node"]) - self.node_offset
+        recovered["_map_name"] = self.current_map
+        recovered["_node_offset"] = self.node_offset
+        recovered["_full_map_recovery"] = True
+        recovered["_recovery_map"] = self.recovery_map
+        if switched:
+            recovered["_map_switched"] = True
+        self._recovery_fixes += 1
+        LOGGER.warning("LOST восстановлен полной картой %s: global_node=%d -> %s",
+                       self.recovery_map, global_node, self.current_map)
+        return recovered
+
     def locate(self, frame: object) -> dict:
         result = self.current.locate(frame)
+        current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
+        if not current_good:
+            recovered = self._recover(frame)
+            if recovered is not None:
+                return recovered
         if result.get("ok") and result.get("node") is not None:
             self._schedule(int(result["node"]) + self.node_offset)
         self._collect_preload()
@@ -166,9 +241,13 @@ class ShardedLocalizer:
             if id(localizer) not in seen and hasattr(localizer, "close"):
                 localizer.close()
             seen.add(id(localizer))
+        if self._recovery is not None and id(self._recovery) not in seen and hasattr(self._recovery, "close"):
+            self._recovery.close()
 
     @property
     def preload_status(self) -> dict[str, object]:
         target = None if self._pending_index is None else str(self.shards[self._pending_index]["map"])
         return {"target": target, "ready": self._pending is not None,
-                "loaded": len(self._loaded), "total": len(self.shards)}
+                "loaded": len(self._loaded), "total": len(self.shards),
+                "recovery_map": self.recovery_map if self._recovery is not None else None,
+                "recovery_calls": self._recovery_calls, "recovery_fixes": self._recovery_fixes}

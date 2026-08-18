@@ -58,6 +58,8 @@ def build_runtime_localizer(map_name, back_facing):
         confirm_fixes=config.SHARD_CONFIRM_FIXES,
         min_inliers=config.MIN_INLIERS,
         preload_all=getattr(config, "SHARD_PRELOAD_ALL", False),
+        full_recovery=getattr(config, "SHARD_FULL_RECOVERY", False),
+        recovery_min_inliers=getattr(config, "SHARD_RECOVERY_MIN_INLIERS", 35),
     )
 
 

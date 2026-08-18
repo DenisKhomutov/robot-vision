@@ -112,9 +112,15 @@ class DualNav:
 
     def _rear(self, rf):
         result = self.rear.locate(rf)
+        recovery = bool(result.get("_full_map_recovery"))
+        recovery_map = result.get("_recovery_map")
         map_name, offset = self._dynamic_context("rear", result)
         cmd = self.pr.step(result)
-        return self._map_fields(cmd, "rear", map_name, offset)
+        cmd = self._map_fields(cmd, "rear", map_name, offset)
+        if recovery:
+            cmd["full_map_recovery"] = True
+            cmd["recovery_map"] = recovery_map
+        return cmd
 
     def _maps_compatible(self):
         front_route, rear_route = _route_id(self.front_map), _route_id(self.rear_map)
@@ -128,6 +134,8 @@ class DualNav:
             return cmd
 
         front_result = self.front.locate(front_frame)
+        front_recovery = bool(front_result.get("_full_map_recovery"))
+        front_recovery_map = front_result.get("_recovery_map")
         front_map, front_offset = self._dynamic_context("front", front_result)
         cf = self.pf.step(front_result)
         front_ok = cf["move_type"] != "lost"
@@ -144,6 +152,9 @@ class DualNav:
 
         if self.active == "front" and front_ok:
             cmd = self._map_fields(cf, "front", front_map, front_offset)
+            if front_recovery:
+                cmd["full_map_recovery"] = True
+                cmd["recovery_map"] = front_recovery_map
         elif not self._maps_compatible():
             # Нельзя локализовать route12-кадр по route3-карте: при потере front
             # безопасно останавливаемся, пока оператор не выберет совместимую rear-карту.

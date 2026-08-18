@@ -38,7 +38,7 @@ button.go{background:#18794e}button.stop{background:#a33b32}button:active{transf
 #message{min-height:1.5em;color:#f5c451}@media(max-width:800px){main{grid-template-columns:1fr}.panel{order:-1}}
 </style></head><body><header><strong>Robot Vision</strong><span id="link" class="badge bad">NATS</span>
 <span id="fresh" class="badge bad">нет телеметрии</span><span id="mode" class="badge">—</span>
-<span id="traffic" class="badge">Светофор OFF</span></header>
+<span id="traffic" class="badge">Светофор OFF</span><span id="recovery" class="badge">SHARD</span></header>
 <main><canvas id="map" width="900" height="700"></canvas><section class="panel">
 <div>Команда</div><div id="command" class="value">LOST</div><div>Узел</div><div id="node" class="value">—</div>
 <div>Отклонение</div><div id="offset" class="value">—</div><div>Инлайнеры</div><div id="inliers" class="value">—</div>
@@ -66,6 +66,7 @@ function fillMaps(){let cam=document.querySelector('#camera').value,sel=document
 async function tick(){try{let r=await fetch('/api/status',{cache:'no-store'});status=await r.json();document.querySelector('#link').textContent=status.nats?'NATS подключён':'NATS отключён';document.querySelector('#link').className='badge '+(status.nats?'ok':'bad');
  let age=status.age_s;document.querySelector('#fresh').textContent=age==null?'нет телеметрии':`телеметрия ${age.toFixed(1)}с`;document.querySelector('#fresh').className='badge '+(age!=null&&age<2?'ok':'bad');
  let tl=document.querySelector('#traffic');tl.textContent=status.traffic_loading?'Светофор: загрузка':`Светофор ${status.traffic_enabled?'ON':'OFF'}${status.traffic_state?' '+status.traffic_state:''}`;tl.className='badge '+(status.traffic_enabled?'ok':'');
+ let recovery=document.querySelector('#recovery');recovery.textContent=status.full_map_recovery?'FULL RECOVERY':'SHARD';recovery.className='badge '+(status.full_map_recovery?'bad':'ok');
  document.querySelector('#mode').textContent=(status.mode||'—')+' '+(status.cam||'');if(status.route&&document.activeElement!==document.querySelector('#routeSelect'))document.querySelector('#routeSelect').value=status.route;document.querySelector('#command').textContent=(status.move_type||'LOST').toUpperCase()+(status.deg!=null?` ${status.deg>0?'+':''}${status.deg}°`:'');
  document.querySelector('#node').textContent=status.node==null?'—':status.node;document.querySelector('#offset').textContent=status.dist_to_route_m!=null?status.dist_to_route_m+' м':(status.dist_to_route??'—');document.querySelector('#inliers').textContent=status.inliers??'—';draw()}catch(e){document.querySelector('#message').textContent=e}setTimeout(tick,250)}
 document.querySelectorAll('button').forEach(b=>b.onclick=async()=>{let body={cmd:b.dataset.cmd};if(b.dataset.mode)body.mode=b.dataset.mode;if(b.dataset.enabled)body.enabled=b.dataset.enabled==='true';let r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.querySelector('#message').textContent=(await r.json()).message});

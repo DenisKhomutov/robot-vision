@@ -127,6 +127,8 @@ def main() -> int:
             "ok": bool(result.get("ok")), "accepted": bool(pilot.accepted),
             "inliers": result.get("inliers"), "pairs": result.get("pairs"),
             "reason": result.get("reason"), "switched": switched,
+            "full_map_recovery": bool(result.get("_full_map_recovery")),
+            "recovery_map": result.get("_recovery_map"), "pilot_reject": pilot.jump,
             "elapsed_ms": round(elapsed_ms, 2), "command": command.get("move_type"),
         }, ensure_ascii=False) + "\n")
 
