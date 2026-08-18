@@ -61,7 +61,7 @@ CAM_FPS = 30                   # частота кадров из сокета
 
 # Двухкамерная навигация
 NAV_MODE = "rear"             # "rear" (только зад, готово) | "dual" (нужна ГОТОВАЯ фронт-карта)
-FRONT_MAP = "map_ns12_front_full_uncolored"  # карта передней камеры (для dual; пока без runtime.npz)
+FRONT_MAP = "route12_front_colmap_full_1701_fullopencv_cpu10_final"  # полный маршрут 1-2, front
 REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
