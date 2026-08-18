@@ -4,9 +4,12 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "route3_rear_gap8_final"   # карта по умолчанию (папка в maps/)
+DEFAULT_MAP = "route3_rear_runtime_01_of_03"  # первый rear-шард; следующие подгружаются автоматически
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
+SHARD_PRELOAD_NODES = 25       # за столько глобальных узлов фоном грузить соседний шард
+SHARD_CONFIRM_FIXES = 2        # уверенных фикса соседнего шарда до атомарного переключения
+SHARD_PRELOAD_ALL = True       # при старте демона загрузить все шарды обоих маршрутов
 
 # Детектор ALIKED (запрос)
 QUERY_KPTS = 1024              # макс. число ключевых точек на кадре запроса (больше = точнее и медленнее)
@@ -60,11 +63,16 @@ CAM_HEIGHT = 720               # высота кадра из сокета
 CAM_FPS = 30                   # частота кадров из сокета
 
 # Двухкамерная навигация
-NAV_MODE = "rear"             # "rear" (только зад, готово) | "dual" (нужна ГОТОВАЯ фронт-карта)
-FRONT_MAP = "route12_front_colmap_full_1701_fullopencv_cpu10_final"  # полный маршрут 1-2, front
+NAV_MODE = "dual"             # по умолчанию ведёт front; rear включается как резерв после потерь
+FRONT_MAP = "route12_front_runtime_01_of_07"  # первый front-шард; следующие подгружаются автоматически
 REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
+ROUTES = {
+    "route12": {"label": "Маршрут 1-2", "camera": "front", "map": FRONT_MAP},
+    "route3": {"label": "Маршрут 3", "camera": "rear", "map": REAR_MAP},
+}
+DEFAULT_ROUTE = "route12"
 FRONT_SHM_SOCKET = "/tmp/cam_front_raw"  # AI-сокет передней (CSI IMX219), I420 1280x720
 REAR_SHM_SOCKET = "/tmp/cam_raw"         # AI-сокет задней (USB C920), I420 1280x720
 DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
@@ -74,8 +82,25 @@ DUAL_BACK_HOLD = 5            # столько подряд удачных фр�
 # но включается только в ЗОНЕ. Зону выбирает АКТИВНАЯ навигационная камера (DualNav):
 # ведёт фронт -> зона фронт-карты; фронт потерян, ведёт зад -> зона зад-карты.
 TRAFFIC_LIGHT_ENABLED = False   # гонять детекцию+классификацию светофора
-FRONT_TRAFFIC_ZONE = None      # (start, end) узлов ФРОНТ-карты; None = вся трасса (зона ещё не задана)
-REAR_TRAFFIC_ZONE = (155, 176)         # узлы ЗАД-карты (кадры 001069..001174); None = вся трасса
+# Диапазоны задаются в ГЛОБАЛЬНЫХ узлах исходной полной карты. Для shard-карт
+# service добавляет global_node из shard.json. Отсутствие карты в словаре означает:
+# светофорная ветка на ней выключена, а не активна на всём маршруте.
+TRAFFIC_ZONES = {
+    # Пользователь указал rear как навигационные image/node 410..430.
+    "route3_rear_gap8_final": (410, 430),
+    "route3_rear_runtime_01_of_03": (410, 430),
+    "route3_rear_runtime_02_of_03": (410, 430),
+    "route3_rear_runtime_03_of_03": (410, 430),
+    # COLMAP image_id 870..880 точно соответствует runtime node 869..879.
+    "route12_front_colmap_full_1701_fullopencv_cpu10_final": (869, 879),
+    "route12_front_runtime_01_of_07": (869, 879),
+    "route12_front_runtime_02_of_07": (869, 879),
+    "route12_front_runtime_03_of_07": (869, 879),
+    "route12_front_runtime_04_of_07": (869, 879),
+    "route12_front_runtime_05_of_07": (869, 879),
+    "route12_front_runtime_06_of_07": (869, 879),
+    "route12_front_runtime_07_of_07": (869, 879),
+}
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 
 # NATS

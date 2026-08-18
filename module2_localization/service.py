@@ -13,7 +13,7 @@ import numpy as np
 from . import config
 from .core.dualnav import DualNav
 from .nats_client import NatsClient
-from .services.localization_service import build_localizer, get_localizer
+from .services.localization_service import build_runtime_localizer, get_localizer
 
 
 class ShmSource:
@@ -159,7 +159,7 @@ class VideoFileSource:
         pass
 
 
-def make_control_handler(nav):
+def make_control_handler(nav, traffic=None):
     async def on_control(msg):
         try:
             c = json.loads(msg.data.decode())
@@ -172,12 +172,48 @@ def make_control_handler(nav):
             nav.pf.resume(); nav.pr.resume()
         elif cmd == "reset":
             nav.pf.reset(); nav.pr.reset()
+            if traffic:
+                traffic.reset()
         elif cmd == "set_mode":
             nav.set_mode(c.get("mode"))
             print(f"[control] режим -> {nav.mode}", flush=True)
             return
+        elif cmd == "set_route":
+            route = c.get("route")
+            if not nav.set_route(route):
+                print(f"[control] неизвестный или недоступный маршрут: {route}", flush=True)
+                return
+            if traffic:
+                traffic.reset()
+            print(f"[control] маршрут -> {route}; цепочка уже в памяти", flush=True)
+            return
         elif cmd == "set_map":
-            print(f"[control] set_map пока не реализован (запрошена карта {c.get('map')})", flush=True)
+            camera, map_name = c.get("camera"), c.get("map")
+            if camera not in ("front", "rear") or not isinstance(map_name, str):
+                print("[control] set_map: нужны camera=front|rear и map", flush=True)
+                return
+            map_dir = config.MAPS_DIR / map_name
+            if not (map_dir / "runtime.npz").exists() or not (map_dir / "aliked_bank.npz").exists():
+                print(f"[control] set_map: нет runtime-комплекта {map_name}", flush=True)
+                return
+            print(f"[control] фоновая загрузка {camera} -> {map_name}; текущая карта продолжает вести", flush=True)
+            try:
+                back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
+                localizer = await asyncio.to_thread(build_runtime_localizer, map_name, back_facing)
+                nav.set_localizer(camera, localizer, map_name)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[control] set_map ошибка: {exc}", flush=True)
+                return
+            print(f"[control] карта {camera} -> {map_name}; переключено без остановки", flush=True)
+            return
+        elif cmd == "set_traffic":
+            if traffic is None:
+                print("[control] светофорная ветка недоступна: нет передней камеры", flush=True)
+                return
+            enabled = bool(c.get("enabled"))
+            await traffic.set_enabled(enabled)
+            print(f"[control] детекция светофора -> {'ON' if enabled else 'OFF'}", flush=True)
+            return
         else:
             print(f"[control] неизвестная команда: {cmd}", flush=True)
             return
@@ -198,39 +234,45 @@ class TrafficBranch:
         tl.init_models()
         from module1_traffic_light.services.traffic_light_service import analyze
         self._analyze = analyze
-        self.front_zone = getattr(cfg, "FRONT_TRAFFIC_ZONE", None)
-        self.rear_zone = getattr(cfg, "REAR_TRAFFIC_ZONE", None)
-        self.last_cam, self.last_node = "rear", None
+        self.zones = getattr(cfg, "TRAFFIC_ZONES", {})
+        self.last_map, self.last_node = None, None
         # машина состояний в зоне: WAIT_RED (стоим, ждём красный, зелёный игнорим) ->
-        # WAIT_GREEN (видели красный, стоим, ждём зелёный) -> GO (едем, светофор больше
-        # не смотрим до выезда из зоны). Так робот не выедет на угасающий зелёный.
+        # WAIT_GREEN (видели красный, стоим, ждём зелёный) -> GO (защёлка до reset;
+        # детектор больше не запускается). Так робот не остановится уже на дороге.
         self.state = "WAIT_RED"
+        self.completed = False
+
+    def reset(self):
+        self.state = "WAIT_RED"
+        self.completed = False
+        self.last_map = None
+        self.last_node = None
 
     @staticmethod
     def _in(zone, node):
-        return zone is None or (node is not None and zone[0] <= node <= zone[1])
+        return zone is not None and node is not None and zone[0] <= node <= zone[1]
 
-    def in_zone(self, cam, node):
+    def in_zone(self, map_name, node):
+        if map_name != self.last_map:
+            self.last_node = None
+            self.last_map = map_name
         if node is not None:                       # запоминаем последнюю известную позу
-            self.last_cam, self.last_node = cam or self.last_cam, node
-        cam = cam or self.last_cam
+            self.last_node = node
         node = node if node is not None else self.last_node
-        zone = self.front_zone if cam == "front" else self.rear_zone
+        zone = self.zones.get(map_name)
         return self._in(zone, node)
 
     @property
     def go(self):
-        return self.state == "GO"
+        return self.completed
 
     def update(self, in_zone, frame_bgr):
-        """Машина состояний в зоне. Вне зоны — сброс в WAIT_RED (для следующего въезда),
-        едем. WAIT_RED: стоим, ждём КРАСНЫЙ (зелёный игнорим — мог угасать). WAIT_GREEN:
-        стоим, ждём ЗЕЛЁНЫЙ. GO: едем, светофор до выезда из зоны не смотрим."""
+        """WAIT_RED ignores green; RED arms WAIT_GREEN; next GREEN latches GO."""
+        if self.completed:
+            return None                            # до reset больше никогда не анализируем
         if not in_zone:
-            self.state = "WAIT_RED"                # покинули зону -> сброс
+            self.state = "WAIT_RED"
             return None
-        if self.state == "GO":
-            return None                            # в зоне уже едем, детекцию не гоняем
         from PIL import Image
         r = self._analyze(Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)))
         sig = (r.get("signal") or "").lower()
@@ -240,12 +282,60 @@ class TrafficBranch:
             self.state = "WAIT_GREEN"
         elif self.state == "WAIT_GREEN" and is_green:
             self.state = "GO"
+            self.completed = True
         return r
+
+
+class TrafficController:
+    """Runtime on/off switch with lazy model loading and no navigation pause."""
+
+    def __init__(self, cfg, enabled=False):
+        self.cfg = cfg
+        self.enabled = False
+        self.loading = False
+        self.branch = None
+        self.start_enabled = enabled
+
+    async def set_enabled(self, enabled):
+        if not enabled:
+            self.enabled = False
+            if self.branch:
+                self.branch.reset()
+            return
+        if self.branch is None:
+            self.loading = True
+            try:
+                self.branch = await asyncio.to_thread(TrafficBranch, self.cfg)
+            finally:
+                self.loading = False
+        self.branch.reset()
+        self.enabled = True
+
+    def reset(self):
+        if self.branch:
+            self.branch.reset()
+
+    @property
+    def state(self):
+        return None if self.branch is None else self.branch.state
+
+    def process(self, cmd, frame):
+        cmd["traffic_enabled"] = self.enabled
+        cmd["traffic_loading"] = self.loading
+        if not self.enabled or self.branch is None:
+            return None
+        in_zone = self.branch.in_zone(cmd.get("map"), cmd.get("global_node", cmd.get("node")))
+        result = self.branch.update(in_zone, frame)
+        cmd["traffic_in_zone"] = in_zone
+        cmd["traffic_state"] = self.branch.state
+        if in_zone and not self.branch.go and cmd.get("move_type") != "lost":
+            cmd["move_type"], cmd["deg"] = "stop", 0.0
+        return result
 
 
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None) -> None:
     if nc:
-        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav))
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
         stamp, rframe = rear_src.latest()               # ведём цикл по задней (всегда есть)
@@ -257,11 +347,7 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
             # отдельно ничего не шлём — только перебиваем команду навигации на stop,
             # пока машина состояний не разрешит ехать (state GO).
             if traffic and fframe is not None:
-                inz = traffic.in_zone(cmd.get("cam"), cmd.get("node"))
-                tl = traffic.update(inz, fframe)
-                if inz and not traffic.go and cmd.get("move_type") != "lost":
-                    cmd["move_type"], cmd["deg"] = "stop", 0.0
-                    cmd["traffic"] = traffic.state       # WAIT_RED / WAIT_GREEN
+                tl = traffic.process(cmd, fframe)
                 if tl is not None:
                     print(f"[TL] {json.dumps(tl, ensure_ascii=False)} state={traffic.state}", flush=True)
             payload = json.dumps(cmd, ensure_ascii=False).encode()
@@ -311,8 +397,8 @@ async def main() -> int:
     # ── локализаторы
     front_loc = None
     if dual:
-        front_loc = build_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK)
-        rear_loc = build_localizer(config.REAR_MAP, config.REAR_CAM_BACK)
+        front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK)
+        rear_loc = build_runtime_localizer(config.REAR_MAP, config.REAR_CAM_BACK)
     else:
         rear_loc = get_localizer()
 
@@ -329,18 +415,20 @@ async def main() -> int:
             if dual:
                 return 1
 
-    nav = DualNav(front_loc, rear_loc, config)
+    nav = DualNav(front_loc, rear_loc, config, front_map=config.FRONT_MAP, rear_map=config.REAR_MAP)
     if args.mode:
         nav.set_mode(args.mode)
     print(f"[nav] режим {nav.mode}" + ("  (dual доступен)" if front_loc else ""), flush=True)
 
     traffic = None
-    if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
-        if front_src is None:
-            print("[TL] светофор включён, но нет передней камеры (нужен dual/два источника) — пропуск", flush=True)
-        else:
-            traffic = TrafficBranch(config)
-            print("[TL] ветка светофора активна (детекция на переднем кадре, гейт по зоне)", flush=True)
+    if front_src is None:
+        if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
+            print("[TL] светофор включён, но нет передней камеры — пропуск", flush=True)
+    else:
+        traffic = TrafficController(config)
+        if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
+            await traffic.set_enabled(True)
+        print(f"[TL] runtime-переключатель готов; старт={'ON' if traffic.enabled else 'OFF'}", flush=True)
 
     nc = None
     if not args.no_nats:

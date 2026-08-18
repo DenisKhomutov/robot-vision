@@ -43,10 +43,28 @@ def build_localizer(map_name, back_facing):
     )
 
 
+def build_runtime_localizer(map_name, back_facing):
+    """Build a full-map localizer or an automatically advancing shard chain."""
+    shard = config.MAPS_DIR / map_name / "shard.json"
+    if not shard.exists():
+        return build_localizer(map_name, back_facing)
+    from .sharded_localizer import ShardedLocalizer
+    return ShardedLocalizer(
+        config.MAPS_DIR,
+        map_name,
+        back_facing,
+        build_localizer,
+        preload_nodes=config.SHARD_PRELOAD_NODES,
+        confirm_fixes=config.SHARD_CONFIRM_FIXES,
+        min_inliers=config.MIN_INLIERS,
+        preload_all=getattr(config, "SHARD_PRELOAD_ALL", False),
+    )
+
+
 def get_localizer():
     global _localizer
     if _localizer is None:
-        _localizer = build_localizer(config.DEFAULT_MAP, config.CAMERA_BACK)
+        _localizer = build_runtime_localizer(config.DEFAULT_MAP, config.CAMERA_BACK)
     return _localizer
 
 
