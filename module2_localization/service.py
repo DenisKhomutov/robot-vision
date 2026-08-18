@@ -167,9 +167,9 @@ def make_control_handler(nav, traffic=None):
             return
         cmd = c.get("cmd")
         if cmd == "pause":
-            nav.pf.pause(); nav.pr.pause()
+            nav.pause()
         elif cmd == "resume":
-            nav.pf.resume(); nav.pr.resume()
+            nav.resume()
         elif cmd == "reset":
             nav.pf.reset(); nav.pr.reset()
             if traffic:

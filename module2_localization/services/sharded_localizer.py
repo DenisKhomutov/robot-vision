@@ -59,6 +59,7 @@ class ShardedLocalizer:
                     LOGGER.info("загрузка шарда в память %s", item["map"])
                     self._loaded[i] = factory(str(item["map"]), back_facing)
             LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
+        self._force_recovery = False
         self._recovery = None
         self.recovery_map = str(self.shards[0].get("source_map", ""))
         self._recovery_calls = 0
@@ -102,6 +103,21 @@ class ShardedLocalizer:
             return
         LOGGER.info("начата фоновая загрузка %s", map_name)
         self._future = self._executor.submit(self.factory, map_name, self.back_facing)
+
+    def force_relocate(self) -> None:
+        """Ignore the current shard on the next locate() and relocalize via
+        the full recovery map. Call this whenever navigation resumes after a
+        pause — the robot may have been moved between shards while stopped,
+        and the current shard's local node no longer means anything."""
+        self._force_recovery = True
+
+    def _evict_other(self, keep_index: int) -> None:
+        for i in list(self._loaded):
+            if i == keep_index:
+                continue
+            localizer = self._loaded.pop(i)
+            if hasattr(localizer, "close"):
+                localizer.close()
 
     def _collect_preload(self) -> None:
         if self._future and self._future.done() and self._pending is None:
@@ -191,12 +207,20 @@ class ShardedLocalizer:
         recovered["_recovery_map"] = self.recovery_map
         if switched:
             recovered["_map_switched"] = True
+            self._evict_other(self.index)
         self._recovery_fixes += 1
         LOGGER.warning("LOST восстановлен полной картой %s: global_node=%d -> %s",
                        self.recovery_map, global_node, self.current_map)
         return recovered
 
     def locate(self, frame: object) -> dict:
+        if self._force_recovery and self._recovery is not None:
+            recovered = self._recover(frame)
+            if recovered is not None:
+                self._force_recovery = False
+                return recovered
+            return {"ok": False, "inliers": 0, "reason": "resume: релокализация по полной карте"}
+        self._force_recovery = False
         result = self.current.locate(frame)
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
         if not current_good:
@@ -229,6 +253,7 @@ class ShardedLocalizer:
                 self._pending_good = 0
                 self._preload_started = None
                 LOGGER.info("активный шард -> %s", self.current_map)
+                self._evict_other(self.index)
                 if candidate.get("node") is not None:
                     self._last_global_node = int(candidate["node"]) + self.node_offset
                 return self._decorate(candidate, switched=True)

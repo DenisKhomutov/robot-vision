@@ -102,6 +102,21 @@ class DualNav:
                 self.pr.resume()
         return self.rear_map, self.rear_node_offset
 
+    def pause(self):
+        self.pf.pause()
+        self.pr.pause()
+
+    def resume(self):
+        self.pf.resume()
+        self.pr.resume()
+        # Робот мог быть физически передвинут между шардами, пока стоял на
+        # паузе — локальный node текущего шарда после этого ничего не значит.
+        # Заставляем обе камеры заново определиться по полной карте.
+        for loc in (self.front, self.rear):
+            relocate = getattr(loc, "force_relocate", None)
+            if relocate is not None:
+                relocate()
+
     def set_mode(self, mode):
         if mode == "dual" and self.front is None:
             return                    # нет передней карты/источника — dual недоступен
