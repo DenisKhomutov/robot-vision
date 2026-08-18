@@ -26,54 +26,267 @@ class NatsMessage(Protocol):
 
 HTML = r"""<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Robot Vision</title><style>
-:root{color-scheme:dark;font-family:system-ui,sans-serif}body{margin:0;background:#101216;color:#eee}
-header{display:flex;gap:12px;align-items:center;padding:12px 16px;background:#191d24;flex-wrap:wrap}
-.badge{padding:5px 10px;border-radius:16px;background:#303641}.ok{background:#174f31}.bad{background:#682525}
-main{display:grid;grid-template-columns:minmax(300px,1fr) 320px;gap:12px;padding:12px;max-width:1300px;margin:auto}
-canvas{width:100%;height:auto;background:#111;border:1px solid #343a44;border-radius:8px}
-.panel{background:#191d24;border-radius:8px;padding:14px}.value{font-size:1.35rem;font-weight:700;margin:4px 0 14px}
-.controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}button{font-size:1rem;padding:14px;border:0;border-radius:8px;background:#344054;color:#fff}
-button.go{background:#18794e}button.stop{background:#a33b32}button:active{transform:scale(.98)}
-#message{min-height:1.5em;color:#f5c451}@media(max-width:800px){main{grid-template-columns:1fr}.panel{order:-1}}
-</style></head><body><header><strong>Robot Vision</strong><span id="link" class="badge bad">NATS</span>
-<span id="fresh" class="badge bad">нет телеметрии</span><span id="mode" class="badge">—</span>
-<span id="traffic" class="badge">Светофор OFF</span><span id="recovery" class="badge">SHARD</span></header>
-<main><canvas id="map" width="900" height="700"></canvas><section class="panel">
-<div>Команда</div><div id="command" class="value">LOST</div><div>Узел</div><div id="node" class="value">—</div>
-<div>Отклонение</div><div id="offset" class="value">—</div><div>Инлайнеры</div><div id="inliers" class="value">—</div>
-<div class="controls"><button class="go" data-cmd="resume">СТАРТ</button><button class="stop" data-cmd="pause">ПАУЗА</button>
-<button data-cmd="reset">СБРОС</button><button data-cmd="set_mode" data-mode="rear">REAR</button>
-<button data-cmd="set_mode" data-mode="dual">DUAL</button>
-<button class="go" data-cmd="set_traffic" data-enabled="true">СВЕТОФОР ON</button>
-<button data-cmd="set_traffic" data-enabled="false">СВЕТОФОР OFF</button></div><hr>
-<label>Маршрут</label><select id="routeSelect"><option value="route12">Маршрут 1-2</option><option value="route3">Маршрут 3</option></select>
-<button id="setRoute">ВЫБРАТЬ МАРШРУТ</button><hr>
-<label>Камера для карты</label><select id="camera"><option value="front">front</option><option value="rear">rear</option></select>
-<label>Полная карта или шард</label><select id="mapSelect"></select><button id="setMap">ЗАГРУЗИТЬ КАРТУ</button>
-<p id="message"></p></section></main>
+<title>Robot Vision</title>
+<style>
+:root{
+  color-scheme:dark;font-family:system-ui,-apple-system,sans-serif;
+  --bg:#0d0f13;--panel:#161a21;--panel2:#1d222b;--border:#2a3140;
+  --text:#eef0f3;--muted:#8b95a5;
+  --green:#1e8a53;--green-bg:#123524;--red:#c1453a;--red-bg:#3a1a17;
+  --yellow:#e0ac3d;--yellow-bg:#3a2c10;--accent:#4c7cf0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);line-height:1.4}
+header{
+  display:flex;gap:10px;align-items:center;padding:12px 20px;background:var(--panel);
+  border-bottom:1px solid var(--border);flex-wrap:wrap;position:sticky;top:0;z-index:10
+}
+header h1{font-size:1.05rem;margin:0 14px 0 0;font-weight:700;letter-spacing:.02em}
+.badge{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;
+  background:var(--panel2);font-size:.82rem;color:var(--muted);border:1px solid var(--border)
+}
+.badge::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.badge.ok{background:var(--green-bg);color:#a9e6c4;border-color:#1e5c3c}
+.badge.ok::before{background:var(--green)}
+.badge.bad{background:var(--red-bg);color:#f3b6ae;border-color:#6b2c25}
+.badge.bad::before{background:var(--red)}
+.badge.warn{background:var(--yellow-bg);color:#f5d99b;border-color:#7a5c1f}
+.badge.warn::before{background:var(--yellow)}
+
+main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;padding:14px;max-width:1400px;margin:auto}
+.map-wrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px}
+canvas{display:block;width:100%;height:auto;background:#0a0c10;border-radius:8px}
+
+aside{display:flex;flex-direction:column;gap:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+.card h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 10px;font-weight:600}
+
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-bottom:2px}
+.stat label{display:block;font-size:.74rem;color:var(--muted);margin-bottom:2px}
+.stat .value{font-size:1.3rem;font-weight:700}
+.stat.command .value{font-size:1.55rem}
+.stat.command .value.go{color:#5fd694}
+.stat.command .value.stop{color:#ff8a7a}
+.stat.command .value.lost{color:var(--yellow)}
+
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{
+  font-size:.95rem;padding:12px;border:1px solid var(--border);border-radius:9px;
+  background:var(--panel2);color:var(--text);cursor:pointer;transition:filter .1s,transform .05s
+}
+button:hover{filter:brightness(1.15)}
+button:active{transform:scale(.97)}
+button.big{padding:16px;font-size:1.05rem;font-weight:700}
+button.go{background:var(--green-bg);border-color:#1e5c3c;color:#bdf0d3}
+button.stop{background:var(--red-bg);border-color:#6b2c25;color:#f6c3bb}
+button.toggle{position:relative}
+button.toggle.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+button.ghost{background:transparent}
+.hint{font-size:.76rem;color:var(--muted);margin:8px 0 2px}
+
+select{
+  width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);
+  background:var(--panel2);color:var(--text);font-size:.9rem;margin-bottom:8px
+}
+label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
+
+#message{min-height:1.4em;color:var(--yellow);font-size:.85rem;margin-top:8px}
+.legend{display:flex;gap:14px;font-size:.75rem;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+
+@media(max-width:900px){main{grid-template-columns:1fr}aside{order:-1}}
+</style></head>
+<body>
+<header>
+  <h1>ROBOT VISION</h1>
+  <span id="link" class="badge bad">NATS</span>
+  <span id="fresh" class="badge bad">нет телеметрии</span>
+  <span id="mode" class="badge">—</span>
+  <span id="traffic" class="badge">светофор off</span>
+  <span id="recovery" class="badge ok">shard</span>
+</header>
+<main>
+  <div class="map-wrap"><canvas id="map" width="900" height="760"></canvas>
+    <div class="legend">
+      <span><i style="background:#d4ae45"></i>маршрут</span>
+      <span><i style="background:#ff4b4b"></i>текущая позиция</span>
+      <span><i style="background:#555"></i>облако точек карты</span>
+    </div>
+  </div>
+  <aside>
+    <section class="card">
+      <h2>Состояние</h2>
+      <div class="status-grid">
+        <div class="stat command"><label>Команда</label><div id="command" class="value lost">LOST</div></div>
+        <div class="stat"><label>Узел</label><div id="node" class="value">—</div></div>
+        <div class="stat"><label>Отклонение</label><div id="offset" class="value">—</div></div>
+        <div class="stat"><label>Инлайнеры</label><div id="inliers" class="value">—</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Навигация</h2>
+      <div class="row2">
+        <button class="go big toggle" id="btnResume" data-cmd="resume">СТАРТ</button>
+        <button class="stop big toggle" id="btnPause" data-cmd="pause">ПАУЗА</button>
+      </div>
+      <div class="hint"></div>
+      <button class="ghost" data-cmd="reset" style="width:100%;margin-top:8px">СБРОС</button>
+    </section>
+
+    <section class="card">
+      <h2>Режим камер</h2>
+      <div class="row2">
+        <button class="toggle" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
+        <button class="toggle" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Светофор</h2>
+      <div class="row2">
+        <button class="toggle" id="btnTlOn" data-cmd="set_traffic" data-enabled="true">ВКЛ</button>
+        <button class="toggle" id="btnTlOff" data-cmd="set_traffic" data-enabled="false">ВЫКЛ</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Маршрут</h2>
+      <select id="routeSelect">
+        <option value="route12">Маршрут 1-2</option>
+        <option value="route3">Маршрут 3</option>
+      </select>
+      <button id="setRoute" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
+    </section>
+
+    <section class="card">
+      <h2>Карта</h2>
+      <label class="field">Камера</label>
+      <select id="camera"><option value="front">front</option><option value="rear">rear</option></select>
+      <label class="field">Полная карта или шард</label>
+      <select id="mapSelect"></select>
+      <button id="setMap" style="width:100%">ЗАГРУЗИТЬ КАРТУ</button>
+    </section>
+
+    <p id="message"></p>
+  </aside>
+</main>
 <script>
-let maps={},catalog=[],status={}; const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
-function fit(points){let xs=points.map(p=>p[0]),ys=points.map(p=>p[1]),lo=[Math.min(...xs),Math.min(...ys)],hi=[Math.max(...xs),Math.max(...ys)];
- return p=>[35+(p[0]-lo[0])/(hi[0]-lo[0]||1)*(canvas.width-70),canvas.height-35-(p[1]-lo[1])/(hi[1]-lo[1]||1)*(canvas.height-70)]}
-function draw(){let name=status.map||document.querySelector('#mapSelect').value,m=maps[name];if(!m){if(name)ensureMap(name);return}let all=m.cloud.length?m.cloud:m.route,px=fit(all);
- ctx.fillStyle='#101216';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#555';for(let p of m.cloud){let q=px(p);ctx.fillRect(q[0],q[1],1,1)}
- ctx.strokeStyle='#d4ae45';ctx.lineWidth=3;ctx.beginPath();m.route.forEach((p,i)=>{let q=px(p);i?ctx.lineTo(...q):ctx.moveTo(...q)});ctx.stroke();
- if(status.pos){let q=px(status.pos);ctx.fillStyle='#ff4b4b';ctx.beginPath();ctx.arc(q[0],q[1],8,0,7);ctx.fill();if(status.head){let h=px([status.pos[0]+status.head[0]*.5,status.pos[1]+status.head[1]*.5]);ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(...q);ctx.lineTo(...h);ctx.stroke()}}
- ctx.fillStyle='#eee';ctx.font='18px system-ui';ctx.fillText(m.name,18,26)}
-async function ensureMap(name){if(!name||maps[name])return;let r=await fetch('/api/map?name='+encodeURIComponent(name));if(r.ok){maps[name]=await r.json();draw()}}
-function fillMaps(){let cam=document.querySelector('#camera').value,sel=document.querySelector('#mapSelect'),old=sel.value;sel.innerHTML='';for(let m of catalog.filter(x=>x.camera===cam)){let o=document.createElement('option');o.value=m.name;o.textContent=m.shard?`${m.name} [${m.start}..${m.stop-1}]`:m.name;sel.appendChild(o)}if([...sel.options].some(o=>o.value===old))sel.value=old;ensureMap(sel.value)}
-async function tick(){try{let r=await fetch('/api/status',{cache:'no-store'});status=await r.json();document.querySelector('#link').textContent=status.nats?'NATS подключён':'NATS отключён';document.querySelector('#link').className='badge '+(status.nats?'ok':'bad');
- let age=status.age_s;document.querySelector('#fresh').textContent=age==null?'нет телеметрии':`телеметрия ${age.toFixed(1)}с`;document.querySelector('#fresh').className='badge '+(age!=null&&age<2?'ok':'bad');
- let tl=document.querySelector('#traffic');tl.textContent=status.traffic_loading?'Светофор: загрузка':`Светофор ${status.traffic_enabled?'ON':'OFF'}${status.traffic_state?' '+status.traffic_state:''}`;tl.className='badge '+(status.traffic_enabled?'ok':'');
- let recovery=document.querySelector('#recovery');recovery.textContent=status.full_map_recovery?'FULL RECOVERY':'SHARD';recovery.className='badge '+(status.full_map_recovery?'bad':'ok');
- document.querySelector('#mode').textContent=(status.mode||'—')+' '+(status.cam||'');if(status.route&&document.activeElement!==document.querySelector('#routeSelect'))document.querySelector('#routeSelect').value=status.route;document.querySelector('#command').textContent=(status.move_type||'LOST').toUpperCase()+(status.deg!=null?` ${status.deg>0?'+':''}${status.deg}°`:'');
- document.querySelector('#node').textContent=status.node==null?'—':status.node;document.querySelector('#offset').textContent=status.dist_to_route_m!=null?status.dist_to_route_m+' м':(status.dist_to_route??'—');document.querySelector('#inliers').textContent=status.inliers??'—';draw()}catch(e){document.querySelector('#message').textContent=e}setTimeout(tick,250)}
-document.querySelectorAll('button').forEach(b=>b.onclick=async()=>{let body={cmd:b.dataset.cmd};if(b.dataset.mode)body.mode=b.dataset.mode;if(b.dataset.enabled)body.enabled=b.dataset.enabled==='true';let r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.querySelector('#message').textContent=(await r.json()).message});
-document.querySelector('#camera').onchange=fillMaps;document.querySelector('#mapSelect').onchange=e=>ensureMap(e.target.value);
-document.querySelector('#setMap').onclick=async()=>{let body={cmd:'set_map',camera:document.querySelector('#camera').value,map:document.querySelector('#mapSelect').value};let r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.querySelector('#message').textContent=(await r.json()).message};
-document.querySelector('#setRoute').onclick=async()=>{let body={cmd:'set_route',route:document.querySelector('#routeSelect').value};let r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});document.querySelector('#message').textContent=(await r.json()).message};
-fetch('/api/maps').then(r=>r.json()).then(x=>{catalog=x.maps;fillMaps()});tick();
+let maps={},catalog=[],status={};
+const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
+const $=s=>document.querySelector(s);
+
+function fit(points){
+  let xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
+  let lo=[Math.min(...xs),Math.min(...ys)],hi=[Math.max(...xs),Math.max(...ys)];
+  return p=>[35+(p[0]-lo[0])/(hi[0]-lo[0]||1)*(canvas.width-70),
+             canvas.height-35-(p[1]-lo[1])/(hi[1]-lo[1]||1)*(canvas.height-70)];
+}
+
+function draw(){
+  let name=status.map||$('#mapSelect').value,m=maps[name];
+  if(!m){if(name)ensureMap(name);return}
+  let all=m.cloud.length?m.cloud:m.route,px=fit(all);
+  ctx.fillStyle='#0a0c10';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#4a5160';for(let p of m.cloud){let q=px(p);ctx.fillRect(q[0],q[1],1,1)}
+  ctx.strokeStyle='#d4ae45';ctx.lineWidth=3;ctx.beginPath();
+  m.route.forEach((p,i)=>{let q=px(p);i?ctx.lineTo(...q):ctx.moveTo(...q)});ctx.stroke();
+  if(status.pos){
+    let q=px(status.pos);
+    ctx.fillStyle='#ff4b4b';ctx.beginPath();ctx.arc(q[0],q[1],8,0,7);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    if(status.head){
+      let h=px([status.pos[0]+status.head[0]*.5,status.pos[1]+status.head[1]*.5]);
+      ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(...q);ctx.lineTo(...h);ctx.stroke();
+    }
+  }
+  ctx.fillStyle='#eee';ctx.font='600 16px system-ui';ctx.fillText(m.name,16,24);
+}
+
+async function ensureMap(name){
+  if(!name||maps[name])return;
+  let r=await fetch('/api/map?name='+encodeURIComponent(name));
+  if(r.ok){maps[name]=await r.json();draw()}
+}
+
+function fillMaps(){
+  let cam=$('#camera').value,sel=$('#mapSelect'),old=sel.value;
+  sel.innerHTML='';
+  for(let m of catalog.filter(x=>x.camera===cam)){
+    let o=document.createElement('option');
+    o.value=m.name;o.textContent=m.shard?`${m.name} [${m.start}..${m.stop-1}]`:m.name;
+    sel.appendChild(o);
+  }
+  if([...sel.options].some(o=>o.value===old))sel.value=old;
+  ensureMap(sel.value);
+}
+
+function setBadge(el,text,cls){el.textContent=text;el.className='badge '+cls}
+
+async function tick(){
+  try{
+    let r=await fetch('/api/status',{cache:'no-store'});
+    status=await r.json();
+
+    setBadge($('#link'),status.nats?'NATS подключён':'NATS отключён',status.nats?'ok':'bad');
+
+    let age=status.age_s;
+    setBadge($('#fresh'),age==null?'нет телеметрии':`телеметрия ${age.toFixed(1)}с`,
+      age!=null&&age<2?'ok':'bad');
+
+    setBadge($('#traffic'),
+      status.traffic_loading?'светофор: загрузка':`светофор ${status.traffic_enabled?'вкл':'выкл'}${status.traffic_state?' · '+status.traffic_state:''}`,
+      status.traffic_loading?'warn':(status.traffic_enabled?'ok':''));
+
+    setBadge($('#recovery'),status.full_map_recovery?'full recovery':'shard',
+      status.full_map_recovery?'warn':'ok');
+
+    $('#mode').textContent=(status.mode||'—')+(status.cam?' · '+status.cam:'');
+    $('#mode').className='badge'+(status.map_mismatch?' bad':'');
+
+    if(status.route&&document.activeElement!==$('#routeSelect'))$('#routeSelect').value=status.route;
+
+    let mv=(status.move_type||'lost').toLowerCase();
+    let cmdEl=$('#command');
+    cmdEl.textContent=mv.toUpperCase()+(status.deg!=null?` ${status.deg>0?'+':''}${status.deg}°`:'');
+    cmdEl.className='value '+(mv==='stop'?'stop':mv==='lost'?'lost':'go');
+
+    $('#node').textContent=status.node==null?'—':status.node;
+    $('#offset').textContent=status.dist_to_route_m!=null?status.dist_to_route_m+' м':(status.dist_to_route??'—');
+    $('#inliers').textContent=status.inliers??'—';
+
+    $('#btnResume').classList.toggle('active',status.paused===false);
+    $('#btnPause').classList.toggle('active',status.paused!==false);
+    $('#btnRear').classList.toggle('active',status.mode==='rear');
+    $('#btnDual').classList.toggle('active',status.mode==='dual');
+    $('#btnTlOn').classList.toggle('active',!!status.traffic_enabled);
+    $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
+
+    draw();
+  }catch(e){$('#message').textContent=e}
+  setTimeout(tick,250);
+}
+
+async function send(body){
+  let r=await fetch('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  $('#message').textContent=(await r.json()).message;
+}
+
+document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
+  let body={cmd:b.dataset.cmd};
+  if(b.dataset.mode)body.mode=b.dataset.mode;
+  if(b.dataset.enabled)body.enabled=b.dataset.enabled==='true';
+  send(body);
+});
+$('#camera').onchange=fillMaps;
+$('#mapSelect').onchange=e=>ensureMap(e.target.value);
+$('#setMap').onclick=()=>send({cmd:'set_map',camera:$('#camera').value,map:$('#mapSelect').value});
+$('#setRoute').onclick=()=>send({cmd:'set_route',route:$('#routeSelect').value});
+
+fetch('/api/maps').then(r=>r.json()).then(x=>{catalog=x.maps;fillMaps()});
+tick();
 </script></body></html>"""
 
 
