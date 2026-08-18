@@ -429,9 +429,13 @@ async def main() -> int:
     front_loc = None
     rear_loc = None
     if dual:
-        front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK, full_recovery=recovery)
-        # Задняя карта по умолчанию НЕ грузится — экономим память на тестах.
-        # Подгружается лениво через админку (set_mode "rear"/"dual" или set_map).
+        # По умолчанию (без --mode) грузим только фронт — экономим память на
+        # деплое, зад подгружается лениво через админку. Explicit --mode rear
+        # грузит только зад (для видео-теста заднего маршрута с CLI).
+        if args.mode in (None, "dual", "front"):
+            front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK, full_recovery=recovery)
+        if args.mode in ("dual", "rear"):
+            rear_loc = build_runtime_localizer(config.REAR_MAP, config.REAR_CAM_BACK, full_recovery=recovery)
     else:
         rear_loc = get_localizer()
 
