@@ -378,6 +378,8 @@ async def main() -> int:
     ap.add_argument("--video-rear", default=None, help="dual: видео задней (отладка)")
     ap.add_argument("--mode", default=None, choices=["rear", "dual"], help="стартовый режим (по умолч. из конфига)")
     ap.add_argument("--no-nats", action="store_true", help="только терминал, без NATS")
+    ap.add_argument("--no-recovery", action="store_true",
+                    help="отключить full-map recovery шардов (замер чистой скорости по шарду)")
     args = ap.parse_args()
 
     # dual (фронт-локализатор) — только явно: флаг --dual или NAV_MODE=dual (нужна ГОТОВАЯ фронт-карта)
@@ -395,10 +397,11 @@ async def main() -> int:
         rear_src = CameraSource(args.camera or config.CAMERA)
 
     # ── локализаторы
+    recovery = False if args.no_recovery else None
     front_loc = None
     if dual:
-        front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK)
-        rear_loc = build_runtime_localizer(config.REAR_MAP, config.REAR_CAM_BACK)
+        front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK, full_recovery=recovery)
+        rear_loc = build_runtime_localizer(config.REAR_MAP, config.REAR_CAM_BACK, full_recovery=recovery)
     else:
         rear_loc = get_localizer()
 
