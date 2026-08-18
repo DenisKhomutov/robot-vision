@@ -57,3 +57,7 @@ experiment/pose_out/
 3D_VPR_exp/data/
 3D_VPR_exp/maps/
 3D_VPR_exp/out/
+
+# module2_localization: сгенерированные превью-видео/диагностика (тяжёлые файлы)
+module2_localization/out/
+out/
