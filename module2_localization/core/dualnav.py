@@ -117,15 +117,38 @@ class DualNav:
             if relocate is not None:
                 relocate()
 
+    def has_camera(self, camera):
+        return (self.front if camera == "front" else self.rear) is not None
+
     def set_mode(self, mode):
-        if mode == "dual" and self.front is None:
-            return                    # нет передней карты/источника — dual недоступен
-        if mode in ("rear", "dual"):
-            self.mode = mode
-            self.active = "front" if mode == "dual" else "rear"
-            self.front_lost = self.front_good = 0
+        if mode not in ("rear", "dual", "front"):
+            return False
+        if mode in ("dual", "front") and self.front is None:
+            return False               # нет передней карты/источника
+        if mode == "rear" and self.rear is None:
+            return False               # нет задней карты/источника
+        self.mode = mode
+        self.active = "rear" if mode == "rear" else "front"
+        self.front_lost = self.front_good = 0
+        return True
+
+    def _front_only(self, ff):
+        if self.front is None:
+            return {"move_type": "stop", "reason": "нет карты передней камеры", "cam": "front"}
+        result = self.front.locate(ff)
+        recovery = bool(result.get("_full_map_recovery"))
+        recovery_map = result.get("_recovery_map")
+        map_name, offset = self._dynamic_context("front", result)
+        cmd = self.pf.step(result)
+        cmd = self._map_fields(cmd, "front", map_name, offset)
+        if recovery:
+            cmd["full_map_recovery"] = True
+            cmd["recovery_map"] = recovery_map
+        return cmd
 
     def _rear(self, rf):
+        if self.rear is None:
+            return {"move_type": "stop", "reason": "нет карты задней камеры", "cam": "rear"}
         result = self.rear.locate(rf)
         recovery = bool(result.get("_full_map_recovery"))
         recovery_map = result.get("_recovery_map")
@@ -142,6 +165,13 @@ class DualNav:
         return front_route is None or rear_route is None or front_route == rear_route
 
     def step(self, front_frame, rear_frame):
+        if self.mode == "front":
+            cmd = self._front_only(front_frame) if front_frame is not None else \
+                {"move_type": "stop", "reason": "нет кадра передней камеры", "cam": "front"}
+            cmd["mode"] = "front"
+            cmd["route"] = self.route
+            return cmd
+
         if self.mode != "dual" or self.front is None or front_frame is None:
             cmd = self._rear(rear_frame)
             cmd["mode"] = "rear"

@@ -175,10 +175,35 @@ def make_control_handler(nav, traffic=None):
             if traffic:
                 traffic.reset()
         elif cmd == "set_mode":
-            nav.set_mode(c.get("mode"))
+            if not (nav.pf.paused and nav.pr.paused):
+                print("[control] set_mode: сначала ПАУЗА, потом смена режима", flush=True)
+                return
+            mode = c.get("mode")
+            needed = {"front": ("front",), "rear": ("rear",), "dual": ("front", "rear")}.get(mode)
+            if needed is None:
+                print(f"[control] неизвестный режим: {mode}", flush=True)
+                return
+            for camera in needed:
+                if nav.has_camera(camera):
+                    continue
+                default_map = config.FRONT_MAP if camera == "front" else config.REAR_MAP
+                print(f"[control] {camera}: карта не загружена, гружу {default_map}...", flush=True)
+                try:
+                    back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
+                    localizer = await asyncio.to_thread(build_runtime_localizer, default_map, back_facing)
+                    nav.set_localizer(camera, localizer, default_map)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[control] не удалось загрузить карту {camera}: {exc}", flush=True)
+                    return
+            if not nav.set_mode(mode):
+                print(f"[control] режим {mode} недоступен", flush=True)
+                return
             print(f"[control] режим -> {nav.mode}", flush=True)
             return
         elif cmd == "set_route":
+            if not (nav.pf.paused and nav.pr.paused):
+                print("[control] set_route: сначала ПАУЗА, потом смена маршрута", flush=True)
+                return
             route = c.get("route")
             if not nav.set_route(route):
                 print(f"[control] неизвестный или недоступный маршрут: {route}", flush=True)
@@ -188,6 +213,9 @@ def make_control_handler(nav, traffic=None):
             print(f"[control] маршрут -> {route}; цепочка уже в памяти", flush=True)
             return
         elif cmd == "set_map":
+            if not (nav.pf.paused and nav.pr.paused):
+                print("[control] set_map: сначала ПАУЗА, потом смена карты", flush=True)
+                return
             camera, map_name = c.get("camera"), c.get("map")
             if camera not in ("front", "rear") or not isinstance(map_name, str):
                 print("[control] set_map: нужны camera=front|rear и map", flush=True)
@@ -196,7 +224,7 @@ def make_control_handler(nav, traffic=None):
             if not (map_dir / "runtime.npz").exists() or not (map_dir / "aliked_bank.npz").exists():
                 print(f"[control] set_map: нет runtime-комплекта {map_name}", flush=True)
                 return
-            print(f"[control] фоновая загрузка {camera} -> {map_name}; текущая карта продолжает вести", flush=True)
+            print(f"[control] загрузка {camera} -> {map_name}...", flush=True)
             try:
                 back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
                 localizer = await asyncio.to_thread(build_runtime_localizer, map_name, back_facing)
@@ -204,7 +232,7 @@ def make_control_handler(nav, traffic=None):
             except Exception as exc:  # noqa: BLE001
                 print(f"[control] set_map ошибка: {exc}", flush=True)
                 return
-            print(f"[control] карта {camera} -> {map_name}; переключено без остановки", flush=True)
+            print(f"[control] карта {camera} -> {map_name}", flush=True)
             return
         elif cmd == "set_traffic":
             if traffic is None:
@@ -376,7 +404,7 @@ async def main() -> int:
                     help="двухкамерный режим: грузит фронт+зад локализаторы, можно переключать в viz")
     ap.add_argument("--video-front", default=None, help="dual: видео передней (отладка)")
     ap.add_argument("--video-rear", default=None, help="dual: видео задней (отладка)")
-    ap.add_argument("--mode", default=None, choices=["rear", "dual"], help="стартовый режим (по умолч. из конфига)")
+    ap.add_argument("--mode", default=None, choices=["rear", "dual", "front"], help="стартовый режим (по умолч. из конфига)")
     ap.add_argument("--no-nats", action="store_true", help="только терминал, без NATS")
     ap.add_argument("--no-recovery", action="store_true",
                     help="отключить full-map recovery шардов (замер чистой скорости по шарду)")
@@ -399,9 +427,11 @@ async def main() -> int:
     # ── локализаторы
     recovery = False if args.no_recovery else None
     front_loc = None
+    rear_loc = None
     if dual:
         front_loc = build_runtime_localizer(config.FRONT_MAP, config.FRONT_CAM_BACK, full_recovery=recovery)
-        rear_loc = build_runtime_localizer(config.REAR_MAP, config.REAR_CAM_BACK, full_recovery=recovery)
+        # Задняя карта по умолчанию НЕ грузится — экономим память на тестах.
+        # Подгружается лениво через админку (set_mode "rear"/"dual" или set_map).
     else:
         rear_loc = get_localizer()
 
@@ -421,6 +451,8 @@ async def main() -> int:
     nav = DualNav(front_loc, rear_loc, config, front_map=config.FRONT_MAP, rear_map=config.REAR_MAP)
     if args.mode:
         nav.set_mode(args.mode)
+    elif front_loc is not None and rear_loc is None:
+        nav.set_mode("front")          # задняя карта ещё не загружена — стартуем только фронтом
     print(f"[nav] режим {nav.mode}" + ("  (dual доступен)" if front_loc else ""), flush=True)
 
     traffic = None

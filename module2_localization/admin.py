@@ -84,6 +84,8 @@ button.toggle{position:relative}
 button.toggle.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 button.ghost{background:transparent}
 .hint{font-size:.76rem;color:var(--muted);margin:8px 0 2px}
+button:disabled,select:disabled{opacity:.4;cursor:not-allowed;filter:none}
+button:disabled:hover{filter:none}
 
 select{
   width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);
@@ -138,10 +140,12 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
     <section class="card">
       <h2>Режим камер</h2>
-      <div class="row2">
-        <button class="toggle" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
-        <button class="toggle" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
+      <div class="row2" style="grid-template-columns:1fr 1fr 1fr">
+        <button class="toggle gated" id="btnFront" data-cmd="set_mode" data-mode="front">FRONT</button>
+        <button class="toggle gated" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
+        <button class="toggle gated" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
       </div>
+      <div class="hint">Сменить режим/карту можно только на паузе</div>
     </section>
 
     <section class="card">
@@ -154,20 +158,20 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
     <section class="card">
       <h2>Маршрут</h2>
-      <select id="routeSelect">
+      <select id="routeSelect" class="gated">
         <option value="route12">Маршрут 1-2</option>
         <option value="route3">Маршрут 3</option>
       </select>
-      <button id="setRoute" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
+      <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
     </section>
 
     <section class="card">
       <h2>Карта</h2>
       <label class="field">Камера</label>
-      <select id="camera"><option value="front">front</option><option value="rear">rear</option></select>
+      <select id="camera" class="gated"><option value="front">front</option><option value="rear">rear</option></select>
       <label class="field">Полная карта или шард</label>
-      <select id="mapSelect"></select>
-      <button id="setMap" style="width:100%">ЗАГРУЗИТЬ КАРТУ</button>
+      <select id="mapSelect" class="gated"></select>
+      <button id="setMap" class="gated" style="width:100%">ЗАГРУЗИТЬ КАРТУ</button>
     </section>
 
     <p id="message"></p>
@@ -257,12 +261,17 @@ async function tick(){
     $('#offset').textContent=status.dist_to_route_m!=null?status.dist_to_route_m+' м':(status.dist_to_route??'—');
     $('#inliers').textContent=status.inliers??'—';
 
-    $('#btnResume').classList.toggle('active',status.paused===false);
-    $('#btnPause').classList.toggle('active',status.paused!==false);
+    let paused=!!status.paused;
+    $('#btnResume').classList.toggle('active',!paused);
+    $('#btnPause').classList.toggle('active',paused);
+    $('#btnFront').classList.toggle('active',status.mode==='front');
     $('#btnRear').classList.toggle('active',status.mode==='rear');
     $('#btnDual').classList.toggle('active',status.mode==='dual');
     $('#btnTlOn').classList.toggle('active',!!status.traffic_enabled);
     $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
+
+    // Смена режима/карты/маршрута разрешена только на паузе — как на сервере.
+    document.querySelectorAll('.gated').forEach(el=>el.disabled=!paused);
 
     draw();
   }catch(e){$('#message').textContent=e}
