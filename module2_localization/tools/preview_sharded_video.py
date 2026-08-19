@@ -25,6 +25,17 @@ BAR_HEIGHT = 120
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 
+def box_color(label):
+    lo = (label or "").lower()
+    if "red" in lo or "крас" in lo:
+        return (0, 0, 255)
+    if "green" in lo or "зел" in lo:
+        return (0, 200, 0)
+    if "yellow" in lo or "жёл" in lo or "жел" in lo:
+        return (0, 210, 255)
+    return (0, 200, 255)
+
+
 def build_canvas(map_name: str) -> tuple[np.ndarray, np.ndarray, Callable[[np.ndarray], np.ndarray]]:
     data = np.load(config.MAPS_DIR / map_name / "runtime.npz")
     route = data["pos"]
@@ -162,6 +173,16 @@ def main() -> int:
                 if detection is not None:
                     traffic_signal = detection.get("signal") or "none"
                     traffic_label += f" / {traffic_signal}"
+                    box = detection.get("box")
+                    # Рамку рисуем только когда tl_frame это и есть render-кадр
+                    # (без отдельного --video-front) — иначе рамка попала бы на
+                    # кадр камеры, которая не выводится в этом видео.
+                    if box is not None and front_capture is None:
+                        x1, y1, x2, y2 = (int(v) for v in box)
+                        bc = box_color(traffic_signal)
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), bc, 3)
+                        cv2.putText(frame, f"{traffic_signal} {detection.get('confidence', 0):.0%}",
+                                    (x1, max(y1 - 10, 20)), FONT, 0.8, bc, 2, cv2.LINE_AA)
 
         diagnostics.write(json.dumps({
             "processed": processed, "source_frame": source_index, "map": map_name,

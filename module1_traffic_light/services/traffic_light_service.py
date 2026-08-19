@@ -18,13 +18,13 @@ def analyze(image: Image.Image) -> dict[str, Any]:
     boxes = get_detector().detect(image)
     # светофор не найден
     if not boxes:
-        return {"status": "no_traffic_light", "signal": None, "confidence": None}
+        return {"status": "no_traffic_light", "signal": None, "confidence": None, "box": None}
     box = boxes[0]
     crop = image.crop(box)
     label, conf = get_classifier().classify(crop)
     _save_crop(crop, label)
     # светофор найден, сигнал не распознан
     if label == config.UNKNOWN_LABEL or conf < config.CLS_CONF:
-        return {"status": "light_unclassified", "signal": None, "confidence": round(conf, 4)}
+        return {"status": "light_unclassified", "signal": None, "confidence": round(conf, 4), "box": box}
     # светофор найден и сигнал распознан
-    return {"status": "light_classified", "signal": label, "confidence": round(conf, 4)}
+    return {"status": "light_classified", "signal": label, "confidence": round(conf, 4), "box": box}
