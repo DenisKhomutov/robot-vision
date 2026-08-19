@@ -61,6 +61,8 @@ class ShardedLocalizer:
             LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
         self._force_recovery = False
         self._recovery = None
+        self._recovery_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-recovery")
+        self._recovery_future: Future | None = None
         self.recovery_map = str(self.shards[0].get("source_map", ""))
         self._recovery_calls = 0
         self._recovery_fixes = 0
@@ -75,6 +77,12 @@ class ShardedLocalizer:
             self._recovery = factory(self.recovery_map, back_facing)
             LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
                         time.monotonic() - started)
+        # Стартовый шард (start_map) — это просто первый по манифесту, не факт что
+        # робот реально там. Раз recovery доступен — определяем реальный шард по
+        # позиции ДО первой настоящей команды: locate() ниже уйдёт в recover(),
+        # пока не найдёт уверенный фикс, а команды всё это время будут "lost".
+        if self._recovery is not None:
+            self._force_recovery = True
 
     def _load_chain(self, start_map: str) -> list[dict]:
         for manifest in self.maps_dir.glob("*_manifest.json"):
@@ -167,10 +175,35 @@ class ShardedLocalizer:
         return len(self.shards) - 1
 
     def _recover(self, frame: object) -> dict | None:
+        """Синхронный recovery — блокирует вызывающего. Используется только для
+        разового force_relocate() на resume, где это осознанно допустимо."""
         if self._recovery is None:
             return None
         self._recovery_calls += 1
-        recovered = self._recovery.locate(frame)
+        return self._apply_recovery(self._recovery.locate(frame))
+
+    def _start_recovery_async(self, frame: object) -> None:
+        """Запустить/держать recovery по полной карте в фоновом потоке — не
+        блокирует основной цикл, шард продолжает проверяться каждый кадр как
+        обычно. Пока прошлый запрос не завершился, новый не запускается."""
+        if self._recovery is None:
+            return
+        if self._recovery_future is not None and not self._recovery_future.done():
+            return
+        self._recovery_calls += 1
+        self._recovery_future = self._recovery_executor.submit(self._recovery.locate, frame)
+
+    def _collect_recovery_async(self) -> dict | None:
+        if self._recovery_future is None or not self._recovery_future.done():
+            return None
+        future, self._recovery_future = self._recovery_future, None
+        try:
+            return self._apply_recovery(future.result())
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.error("фоновый recovery упал: %s", exc)
+            return None
+
+    def _apply_recovery(self, recovered: dict) -> dict | None:
         if not recovered.get("ok") or recovered.get("inliers", 0) < self.recovery_min_inliers:
             return None
         global_node = recovered.get("node")
@@ -224,7 +257,12 @@ class ShardedLocalizer:
         result = self.current.locate(frame)
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
         if not current_good:
-            recovered = self._recover(frame)
+            # Не блокируем кадр на тяжёлый поиск по полной карте — запускаем/держим
+            # его в фоне и параллельно продолжаем штатно проверять свой шард каждый
+            # кадр (он же ниже, через self.current.locate). Берём фоновый результат,
+            # как только он готов, а не раньше.
+            self._start_recovery_async(frame)
+            recovered = self._collect_recovery_async()
             if recovered is not None:
                 return recovered
         if result.get("ok") and result.get("node") is not None:
@@ -261,6 +299,7 @@ class ShardedLocalizer:
 
     def close(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self._recovery_executor.shutdown(wait=False, cancel_futures=True)
         seen: set[int] = set()
         for localizer in self._loaded.values():
             if id(localizer) not in seen and hasattr(localizer, "close"):

@@ -64,9 +64,19 @@ def main() -> int:
     parser.add_argument("--traffic", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-frames", type=int, default=None, help="ограничение для короткой проверки")
     parser.add_argument("--diagnostics", default=None, help="JSONL с результатом каждого обработанного кадра")
+    parser.add_argument("--back-facing", action=argparse.BooleanOptionalAction, default=None,
+                        help="камера смотрит НАЗАД по ходу движения; по умолчанию угадывается по имени карты")
+    parser.add_argument("--video-front", default=None,
+                        help="парное видео передней камеры той же поездки — для честного теста "
+                             "светофора, когда навигация идёт по --map ЗАДНЕЙ карты (в демоне "
+                             "детекция всегда на кадре фронта, а не активной навигационной камеры)")
     args = parser.parse_args()
 
-    localizer = build_runtime_localizer(args.map, False)
+    back_facing = args.back_facing
+    if back_facing is None:
+        back_facing = "rear" in args.map.lower()
+    print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
+    localizer = build_runtime_localizer(args.map, back_facing)
     pilot = Pilot(config)
     pilot.resume()
     traffic = None
@@ -75,6 +85,9 @@ def main() -> int:
     trail = deque(maxlen=80)
 
     capture = cv2.VideoCapture(args.video)
+    front_capture = cv2.VideoCapture(args.video_front) if args.video_front else None
+    if front_capture is not None and not front_capture.isOpened():
+        raise RuntimeError(f"не открывается видео фронта: {args.video_front}")
     source_fps = capture.get(cv2.CAP_PROP_FPS) or 30.0
     total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     output_fps = args.fps or source_fps / args.step
@@ -95,6 +108,11 @@ def main() -> int:
     switch_banner = 0
     while True:
         ok, frame = capture.read()
+        tl_frame = frame
+        if front_capture is not None:
+            ok_f, front_frame = front_capture.read()
+            if ok_f:
+                tl_frame = front_frame
         if not ok:
             break
         if source_index % args.step:
@@ -121,6 +139,30 @@ def main() -> int:
         global_node = None if command.get("node") is None else int(command["node"]) + offset
         command["global_node"] = global_node
         command["map"] = map_name
+
+        zone = config.TRAFFIC_ZONES.get(map_name)
+        in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]
+        traffic_label = "OFF"
+        traffic_signal = None
+        pre_traffic_move_type = command.get("move_type")
+        if args.traffic:
+            traffic_label = "ARMED / OUTSIDE ZONE"
+            if traffic_completed:
+                traffic_label = "GO LATCHED / DETECTOR OFF"
+            elif in_zone:
+                if traffic is None:
+                    traffic = TrafficBranch(config)
+                detection = traffic.update(True, tl_frame)
+                traffic_label = traffic.state
+                if not traffic.go and command.get("move_type") != "lost":
+                    command["move_type"], command["deg"] = "stop", 0.0
+                if traffic.go:
+                    traffic_completed = True
+                    traffic_label = "GO LATCHED / DETECTOR OFF"
+                if detection is not None:
+                    traffic_signal = detection.get("signal") or "none"
+                    traffic_label += f" / {traffic_signal}"
+
         diagnostics.write(json.dumps({
             "processed": processed, "source_frame": source_index, "map": map_name,
             "local_node": command.get("node"), "global_node": global_node,
@@ -129,29 +171,10 @@ def main() -> int:
             "reason": result.get("reason"), "switched": switched,
             "full_map_recovery": bool(result.get("_full_map_recovery")),
             "recovery_map": result.get("_recovery_map"), "pilot_reject": pilot.jump,
-            "elapsed_ms": round(elapsed_ms, 2), "command": command.get("move_type"),
+            "elapsed_ms": round(elapsed_ms, 2),
+            "command": pre_traffic_move_type, "command_after_traffic": command.get("move_type"),
+            "traffic_in_zone": in_zone, "traffic_state": traffic_label, "traffic_signal": traffic_signal,
         }, ensure_ascii=False) + "\n")
-
-        zone = config.TRAFFIC_ZONES.get(map_name)
-        in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]
-        traffic_label = "OFF"
-        if args.traffic:
-            traffic_label = "ARMED / OUTSIDE ZONE"
-            if traffic_completed:
-                traffic_label = "GO LATCHED / DETECTOR OFF"
-            elif in_zone:
-                if traffic is None:
-                    traffic = TrafficBranch(config)
-                detection = traffic.update(True, frame)
-                traffic_label = traffic.state
-                if not traffic.go and command.get("move_type") != "lost":
-                    command["move_type"], command["deg"] = "stop", 0.0
-                if traffic.go:
-                    traffic_completed = True
-                    traffic_label = "GO LATCHED / DETECTOR OFF"
-                if detection is not None:
-                    signal = detection.get("signal") or "none"
-                    traffic_label += f" / {signal}"
 
         good = result.get("ok") and pilot.accepted
         if good:
@@ -201,6 +224,8 @@ def main() -> int:
                   f"{run:.0f}s elapsed ~{remaining:.0f}s left", flush=True)
 
     capture.release()
+    if front_capture is not None:
+        front_capture.release()
     writer.release()
     diagnostics.close()
     if hasattr(localizer, "close"):

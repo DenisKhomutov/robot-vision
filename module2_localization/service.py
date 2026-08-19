@@ -159,7 +159,7 @@ class VideoFileSource:
         pass
 
 
-def make_control_handler(nav, traffic=None):
+def make_control_handler(nav, traffic=None, full_recovery=None):
     async def on_control(msg):
         try:
             c = json.loads(msg.data.decode())
@@ -174,6 +174,10 @@ def make_control_handler(nav, traffic=None):
             nav.pf.reset(); nav.pr.reset()
             if traffic:
                 traffic.reset()
+        elif cmd == "reset_shard":
+            nav.reset_shard()
+            print("[control] сброс шарда: релокализация по полной карте", flush=True)
+            return
         elif cmd == "set_mode":
             if not (nav.pf.paused and nav.pr.paused):
                 print("[control] set_mode: сначала ПАУЗА, потом смена режима", flush=True)
@@ -190,7 +194,8 @@ def make_control_handler(nav, traffic=None):
                 print(f"[control] {camera}: карта не загружена, гружу {default_map}...", flush=True)
                 try:
                     back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
-                    localizer = await asyncio.to_thread(build_runtime_localizer, default_map, back_facing)
+                    localizer = await asyncio.to_thread(
+                        build_runtime_localizer, default_map, back_facing, full_recovery)
                     nav.set_localizer(camera, localizer, default_map)
                 except Exception as exc:  # noqa: BLE001
                     print(f"[control] не удалось загрузить карту {camera}: {exc}", flush=True)
@@ -227,7 +232,8 @@ def make_control_handler(nav, traffic=None):
             print(f"[control] загрузка {camera} -> {map_name}...", flush=True)
             try:
                 back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
-                localizer = await asyncio.to_thread(build_runtime_localizer, map_name, back_facing)
+                localizer = await asyncio.to_thread(
+                    build_runtime_localizer, map_name, back_facing, full_recovery)
                 nav.set_localizer(camera, localizer, map_name)
             except Exception as exc:  # noqa: BLE001
                 print(f"[control] set_map ошибка: {exc}", flush=True)
@@ -324,6 +330,17 @@ class TrafficController:
         self.branch = None
         self.start_enabled = enabled
 
+    async def preload(self):
+        """Загрузить детектор+классификатор в память заранее, не включая
+        детекцию — чтобы set_enabled(True) потом срабатывал мгновенно."""
+        if self.branch is not None:
+            return
+        self.loading = True
+        try:
+            self.branch = await asyncio.to_thread(TrafficBranch, self.cfg)
+        finally:
+            self.loading = False
+
     async def set_enabled(self, enabled):
         if not enabled:
             self.enabled = False
@@ -331,11 +348,7 @@ class TrafficController:
                 self.branch.reset()
             return
         if self.branch is None:
-            self.loading = True
-            try:
-                self.branch = await asyncio.to_thread(TrafficBranch, self.cfg)
-            finally:
-                self.loading = False
+            await self.preload()
         self.branch.reset()
         self.enabled = True
 
@@ -361,9 +374,10 @@ class TrafficController:
         return result
 
 
-async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None) -> None:
+async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,
+                  full_recovery=None) -> None:
     if nc:
-        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic))
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic, full_recovery))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
         stamp, rframe = rear_src.latest()               # ведём цикл по задней (всегда есть)
@@ -467,6 +481,10 @@ async def main() -> int:
         traffic = TrafficController(config)
         if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
             await traffic.set_enabled(True)
+        else:
+            # Модель уже в памяти, даже если детекция сейчас выключена —
+            # включение потом (админка) мгновенное, без задержки загрузки.
+            await traffic.preload()
         print(f"[TL] runtime-переключатель готов; старт={'ON' if traffic.enabled else 'OFF'}", flush=True)
 
     nc = None
@@ -487,7 +505,7 @@ async def main() -> int:
         front_src.start()
     rear_src.start()
     try:
-        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic)
+        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic, recovery)
     finally:
         if front_src:
             front_src.stop()

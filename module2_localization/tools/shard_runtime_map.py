@@ -20,10 +20,68 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--map", required=True, help="исходная карта внутри module2_localization/maps")
     parser.add_argument("--parts", type=int, required=True, help="число равных основных частей")
-    parser.add_argument("--overlap-nodes", type=int, default=25, help="перекрытие с каждой стороны")
+    parser.add_argument("--overlap-nodes", type=int, default=25,
+                        help="запасной край для точек без COLMAP-трека (или fallback без sparse/0)")
     parser.add_argument("--prefix", default=None, help="префикс выходных каталогов")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--no-track-visibility", action="store_true",
+                        help="не использовать COLMAP-треки (sparse/0); резать только по ближайшему узлу")
+    parser.add_argument("--balance", choices=["descriptors", "nodes"], default="descriptors",
+                        help="границы шардов: равный вес по дескрипторам (по умолчанию) или равные отрезки маршрута")
     return parser.parse_args()
+
+
+def balanced_edges(weight_per_node: np.ndarray, parts: int) -> np.ndarray:
+    """Границы шардов так, чтобы суммарный вес (число дескрипторов) на шард был
+    примерно одинаковым — иначе густые участки маршрута дают тяжёлые шарды и
+    неравномерную скорость выдачи команд/предзагрузки."""
+    cum = np.concatenate(([0.0], np.cumsum(weight_per_node)))
+    total = cum[-1]
+    if total <= 0:
+        return np.linspace(0, len(weight_per_node), parts + 1, dtype=int)
+    targets = np.linspace(0, total, parts + 1)
+    edges = np.searchsorted(cum, targets, side="left")
+    edges = np.clip(edges, 0, len(weight_per_node))
+    edges[0], edges[-1] = 0, len(weight_per_node)
+    # Гарантируем строго возрастающие границы (могут схлопнуться на очень
+    # неровном распределении веса) — сдвигаем дубликаты вперёд на 1 узел.
+    for i in range(1, len(edges)):
+        if edges[i] <= edges[i - 1]:
+            edges[i] = edges[i - 1] + 1
+    edges[-1] = len(weight_per_node)
+    return edges
+
+
+def load_point_track_nodes(source: Path, names: np.ndarray, num_points: int) -> list[set] | None:
+    """Для каждой 3D-точки — множество узлов (индексов кадров), которые её реально
+    наблюдали по COLMAP-треку. Точнее, чем «ближайший узел»: дальний ориентир
+    (фасад, столб) виден с десятков кадров подряд, а не с одного ближайшего."""
+    sparse = source / "sparse" / "0"
+    if not sparse.exists():
+        return None
+    import pycolmap
+    rec = pycolmap.Reconstruction(str(sparse))
+    name_to_node = {name: i for i, name in enumerate(names.tolist())}
+    image_id_to_node = {}
+    for image in rec.images.values():
+        node = name_to_node.get(image.name)
+        if node is not None:
+            image_id_to_node[image.image_id] = node
+    if len(image_id_to_node) != len(names):
+        LOGGER.warning(
+            "сопоставилось %d/%d кадров COLMAP<->runtime.npz — возможно, разные модели",
+            len(image_id_to_node), len(names),
+        )
+    track_nodes: list[set] = []
+    for point in rec.points3D.values():
+        nodes = {image_id_to_node[e.image_id] for e in point.track.elements if e.image_id in image_id_to_node}
+        track_nodes.append(nodes)
+    if len(track_nodes) != num_points:
+        raise SystemExit(
+            f"число точек COLMAP ({len(track_nodes)}) != число точек runtime.npz ({num_points}); "
+            "sparse/0 не соответствует этой карте"
+        )
+    return track_nodes
 
 
 def main() -> int:
@@ -55,8 +113,14 @@ def main() -> int:
     if args.parts > len(names):
         raise SystemExit("частей больше, чем узлов маршрута")
 
-    # Each point belongs to its closest route node. Chunking avoids an Npoints*Nnodes
-    # allocation for the 1701-node front map.
+    track_nodes = None if args.no_track_visibility else load_point_track_nodes(source, names, len(points))
+    if track_nodes is not None:
+        LOGGER.info("нарезка по видимости COLMAP-трека (sparse/0 найден)")
+    else:
+        LOGGER.info("нарезка по ближайшему узлу (нет sparse/0 или --no-track-visibility)")
+
+    # Fallback/подстраховка: точка без трека или вне видимости всё равно попадёт
+    # в шард своего ближайшего узла. Chunking avoids an Npoints*Nnodes allocation.
     point_node = np.empty(len(points), np.int32)
     route = pos.astype(np.float32, copy=False)
     for start in range(0, len(points), 10_000):
@@ -64,14 +128,29 @@ def main() -> int:
         distance2 = ((block[:, None, :] - route[None, :, :]) ** 2).sum(axis=2)
         point_node[start : start + len(block)] = distance2.argmin(axis=1)
 
-    edges = np.linspace(0, len(names), args.parts + 1, dtype=int)
+    if args.balance == "descriptors":
+        # Вес узла = сколько дескрипторов принадлежит точкам, ближайшим к нему
+        # (без учёта overlap/видимости — это только пропорция для нарезки).
+        desc_weight = np.bincount(point_node[owner], minlength=len(names)).astype(np.float64)
+        edges = balanced_edges(desc_weight, args.parts)
+        LOGGER.info("границы по дескрипторам: %s", edges.tolist())
+    else:
+        edges = np.linspace(0, len(names), args.parts + 1, dtype=int)
     prefix = args.prefix or f"{args.map}_shard"
     created: list[dict[str, object]] = []
     for index in range(args.parts):
         core_start, core_stop = int(edges[index]), int(edges[index + 1])
         start = max(0, core_start - args.overlap_nodes)
         stop = min(len(names), core_stop + args.overlap_nodes)
-        point_keep = (point_node >= start) & (point_node < stop)
+        nearest_keep = (point_node >= start) & (point_node < stop)
+        if track_nodes is not None:
+            track_keep = np.fromiter(
+                (any(start <= n < stop for n in nodes) for nodes in track_nodes),
+                dtype=bool, count=len(track_nodes),
+            )
+            point_keep = nearest_keep | track_keep
+        else:
+            point_keep = nearest_keep
         old_point_ids = np.flatnonzero(point_keep)
         remap = np.full(len(points), -1, np.int64)
         remap[old_point_ids] = np.arange(len(old_point_ids), dtype=np.int64)
@@ -111,6 +190,7 @@ def main() -> int:
             "local_core_start": core_start - start,
             "local_core_stop_exclusive": core_stop - start,
             "overlap_nodes": args.overlap_nodes,
+            "track_visibility": track_nodes is not None,
             "route_nodes": stop - start,
             "points": int(len(old_point_ids)),
             "descriptors": int(descriptor_keep.sum()),

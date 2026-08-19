@@ -4,10 +4,10 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "route3_rear_runtime_01_of_03"  # первый rear-шард; следующие подгружаются автоматически
+DEFAULT_MAP = "route3_rear_bal5_01_of_05"  # первый rear-шард; следующие подгружаются автоматически
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
-SHARD_PRELOAD_NODES = 50       # ширина переходной зоны; соседний шард уже находится в памяти
+SHARD_PRELOAD_NODES = 25       # ширина переходной зоны; соседний шард уже находится в памяти (= overlap-nodes шардов)
 SHARD_CONFIRM_FIXES = 2        # уверенных фикса соседнего шарда до атомарного переключения
 SHARD_PRELOAD_ALL = False      # шарды грузятся по одному, заранее — только в зоне нахлёста
 SHARD_FULL_RECOVERY = True     # при LOST однократно локализоваться по полной карте
@@ -66,7 +66,7 @@ CAM_FPS = 30                   # частота кадров из сокета
 
 # Двухкамерная навигация
 NAV_MODE = "dual"             # по умолчанию ведёт front; rear включается как резерв после потерь
-FRONT_MAP = "route12_front_runtime_01_of_07"  # первый front-шард; следующие подгружаются автоматически
+FRONT_MAP = "route12_front_bal9_01_of_09"  # первый front-шард; следующие подгружаются автоматически
 REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
@@ -93,6 +93,11 @@ TRAFFIC_ZONES = {
     "route3_rear_runtime_01_of_03": (410, 430),
     "route3_rear_runtime_02_of_03": (410, 430),
     "route3_rear_runtime_03_of_03": (410, 430),
+    "route3_rear_bal5_01_of_05": (410, 430),
+    "route3_rear_bal5_02_of_05": (410, 430),
+    "route3_rear_bal5_03_of_05": (410, 430),
+    "route3_rear_bal5_04_of_05": (410, 430),
+    "route3_rear_bal5_05_of_05": (410, 430),
     # COLMAP image_id 870..880 точно соответствует runtime node 869..879.
     "route12_front_colmap_full_1701_fullopencv_cpu10_final": (869, 879),
     "route12_front_runtime_01_of_07": (869, 879),
@@ -102,6 +107,15 @@ TRAFFIC_ZONES = {
     "route12_front_runtime_05_of_07": (869, 879),
     "route12_front_runtime_06_of_07": (869, 879),
     "route12_front_runtime_07_of_07": (869, 879),
+    "route12_front_bal9_01_of_09": (869, 879),
+    "route12_front_bal9_02_of_09": (869, 879),
+    "route12_front_bal9_03_of_09": (869, 879),
+    "route12_front_bal9_04_of_09": (869, 879),
+    "route12_front_bal9_05_of_09": (869, 879),
+    "route12_front_bal9_06_of_09": (869, 879),
+    "route12_front_bal9_07_of_09": (869, 879),
+    "route12_front_bal9_08_of_09": (869, 879),
+    "route12_front_bal9_09_of_09": (869, 879),
 }
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 

@@ -136,6 +136,8 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
       </div>
       <div class="hint"></div>
       <button class="ghost" data-cmd="reset" style="width:100%;margin-top:8px">СБРОС</button>
+      <button class="ghost" data-cmd="reset_shard" style="width:100%;margin-top:8px">СБРОС ШАРДА (релокализация)</button>
+      <div class="hint">Робота передвинули руками — жать, если едет странно/по чужому шарду</div>
     </section>
 
     <section class="card">
@@ -396,7 +398,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "set_mode", "set_map", "set_route", "set_traffic"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "set_mode", "set_map", "set_route", "set_traffic"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return
