@@ -74,7 +74,7 @@ REAR_CAM_BACK = True          # задняя смотрит НАЗАД
 # камера не используется вообще (не грузится, даже лениво).
 ROUTES = {
     "1": {"label": "Маршрут 1 (1-2)", "camera": "front",
-          "front_map": "route1_front_01_of_09", "rear_map": None},
+          "front_map": "route1_front18_01_of_18", "rear_map": None},
     "2": {"label": "Маршрут 2 (3)", "camera": "rear",
           "front_map": None, "rear_map": "route2_rear_01_of_05"},
     "office": {"label": "Маршрут офис", "camera": "front",
@@ -106,15 +106,24 @@ TRAFFIC_ZONES = {
     "route2_rear_05_of_05": (410, 430),
     # Маршрут 1 (фронт): COLMAP image_id 870..880 точно соответствует runtime node 869..879.
     "route1_front_full": (869, 879),
-    "route1_front_01_of_09": (869, 879),
-    "route1_front_02_of_09": (869, 879),
-    "route1_front_03_of_09": (869, 879),
-    "route1_front_04_of_09": (869, 879),
-    "route1_front_05_of_09": (869, 879),
-    "route1_front_06_of_09": (869, 879),
-    "route1_front_07_of_09": (869, 879),
-    "route1_front_08_of_09": (869, 879),
-    "route1_front_09_of_09": (869, 879),
+    "route1_front18_01_of_18": (869, 879),
+    "route1_front18_02_of_18": (869, 879),
+    "route1_front18_03_of_18": (869, 879),
+    "route1_front18_04_of_18": (869, 879),
+    "route1_front18_05_of_18": (869, 879),
+    "route1_front18_06_of_18": (869, 879),
+    "route1_front18_07_of_18": (869, 879),
+    "route1_front18_08_of_18": (869, 879),
+    "route1_front18_09_of_18": (869, 879),
+    "route1_front18_10_of_18": (869, 879),
+    "route1_front18_11_of_18": (869, 879),
+    "route1_front18_12_of_18": (869, 879),
+    "route1_front18_13_of_18": (869, 879),
+    "route1_front18_14_of_18": (869, 879),
+    "route1_front18_15_of_18": (869, 879),
+    "route1_front18_16_of_18": (869, 879),
+    "route1_front18_17_of_18": (869, 879),
+    "route1_front18_18_of_18": (869, 879),
     # TODO: маршрут офис — узлы зоны светофора неизвестны (если там вообще есть
     # светофор); добавить сюда "map_2cam_front": (start, stop), когда будет известно.
 }
