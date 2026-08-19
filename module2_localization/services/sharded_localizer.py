@@ -54,32 +54,32 @@ class ShardedLocalizer:
         self._preload_started: float | None = None
         self._force_recovery = False
         self._recovery = None
+        # full_recovery управляет ТОЛЬКО постоянными попытками при LOST в фоне
+        # (locate()). Саму полную карту грузим всегда, если она есть — она нужна
+        # для разового выбора шарда на старте/смене маршрута/reset_shard даже
+        # с --no-recovery.
+        self._lost_recovery_enabled = bool(full_recovery)
         self._recovery_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-recovery")
         self._recovery_future: Future | None = None
         self.recovery_map = str(self.shards[0].get("source_map", ""))
         self._recovery_calls = 0
         self._recovery_fixes = 0
-        if full_recovery:
-            if not self.recovery_map:
-                raise RuntimeError("manifest шардов не содержит source_map для recovery")
-            required = (self.maps_dir / self.recovery_map / "runtime.npz",
-                        self.maps_dir / self.recovery_map / "aliked_bank.npz")
-            if not all(path.exists() for path in required):
-                raise RuntimeError(f"нет полного runtime-комплекта recovery: {self.recovery_map}")
-            started = time.monotonic()
-            self._recovery = factory(self.recovery_map, back_facing)
-            LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
-                        time.monotonic() - started)
-        if self._recovery is not None:
-            # Стартовый шард (start_map) — это просто первый по манифесту, не факт
-            # что робот реально там. Полная карта решает, какой шард реально нужен,
-            # ДО первой настоящей команды — грузить стартовый шард вслепую смысла
-            # нет, почти всегда его тут же выгрузит recovery. locate() ниже уйдёт
-            # в recover(), пока не найдёт уверенный фикс, команды всё время "lost".
-            self._force_recovery = True
-        else:
-            self.current = factory(start_map, back_facing)
-            self._loaded[self.index] = self.current
+        if not self.recovery_map:
+            raise RuntimeError("manifest шардов не содержит source_map для recovery")
+        required = (self.maps_dir / self.recovery_map / "runtime.npz",
+                    self.maps_dir / self.recovery_map / "aliked_bank.npz")
+        if not all(path.exists() for path in required):
+            raise RuntimeError(f"нет полного runtime-комплекта recovery: {self.recovery_map}")
+        started = time.monotonic()
+        self._recovery = factory(self.recovery_map, back_facing)
+        LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
+                    time.monotonic() - started)
+        # Стартовый шард (start_map) — это просто первый по манифесту, не факт
+        # что робот реально там. Полная карта решает, какой шард реально нужен,
+        # ДО первой настоящей команды — грузить стартовый шард вслепую смысла
+        # нет, почти всегда его тут же выгрузит recovery. locate() ниже уйдёт
+        # в recover(), пока не найдёт уверенный фикс, команды всё время "lost".
+        self._force_recovery = True
         if preload_all:
             started = time.monotonic()
             for i, item in enumerate(self.shards):
@@ -262,7 +262,7 @@ class ShardedLocalizer:
         self._force_recovery = False
         result = self.current.locate(frame)
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
-        if not current_good:
+        if not current_good and self._lost_recovery_enabled:
             # Не блокируем кадр на тяжёлый поиск по полной карте — запускаем/держим
             # его в фоне и параллельно продолжаем штатно проверять свой шард каждый
             # кадр (он же ниже, через self.current.locate). Берём фоновый результат,

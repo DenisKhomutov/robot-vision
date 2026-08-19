@@ -9,7 +9,10 @@ ROUTE_NODES = None             # обрезать эталон до N первы
 SHARD_PRELOAD_NODES = 25       # ширина переходной зоны; соседний шард уже находится в памяти (= overlap-nodes шардов)
 SHARD_CONFIRM_FIXES = 2        # уверенных фикса соседнего шарда до атомарного переключения
 SHARD_PRELOAD_ALL = False      # шарды грузятся по одному, заранее — только в зоне нахлёста
-SHARD_FULL_RECOVERY = True     # при LOST однократно локализоваться по полной карте
+SHARD_FULL_RECOVERY = True     # при LOST продолжать фоново пытаться по полной карте
+                                # (сама полная карта грузится ВСЕГДА — нужна для выбора
+                                # шарда на старте/смене маршрута/reset_shard независимо
+                                # от этого флага; флаг только про постоянные попытки)
 SHARD_RECOVERY_MIN_INLIERS = 35  # полный банк принимаем только при строгом уверенном PnP
 
 # Детектор ALIKED (запрос)
@@ -76,7 +79,7 @@ ROUTES = {
     "1": {"label": "Маршрут 1 (1-2)", "camera": "front",
           "front_map": "route1_front18_01_of_18", "rear_map": None},
     "2": {"label": "Маршрут 2 (3)", "camera": "rear",
-          "front_map": None, "rear_map": "route2_rear_01_of_05"},
+          "front_map": None, "rear_map": "route2_rear10_01_of_10"},
     "office": {"label": "Маршрут офис", "camera": "front",
                "front_map": "map_2cam_front", "rear_map": "map_2cam_rear"},
 }
@@ -99,11 +102,16 @@ TRAFFIC_LIGHT_ENABLED = False   # гонять детекцию+классифи
 TRAFFIC_ZONES = {
     # Маршрут 2 (зад): навигационные image/node 410..430.
     "route2_rear_full": (410, 430),
-    "route2_rear_01_of_05": (410, 430),
-    "route2_rear_02_of_05": (410, 430),
-    "route2_rear_03_of_05": (410, 430),
-    "route2_rear_04_of_05": (410, 430),
-    "route2_rear_05_of_05": (410, 430),
+    "route2_rear10_01_of_10": (410, 430),
+    "route2_rear10_02_of_10": (410, 430),
+    "route2_rear10_03_of_10": (410, 430),
+    "route2_rear10_04_of_10": (410, 430),
+    "route2_rear10_05_of_10": (410, 430),
+    "route2_rear10_06_of_10": (410, 430),
+    "route2_rear10_07_of_10": (410, 430),
+    "route2_rear10_08_of_10": (410, 430),
+    "route2_rear10_09_of_10": (410, 430),
+    "route2_rear10_10_of_10": (410, 430),
     # Маршрут 1 (фронт): COLMAP image_id 870..880 точно соответствует runtime node 869..879.
     "route1_front_full": (869, 879),
     "route1_front18_01_of_18": (869, 879),

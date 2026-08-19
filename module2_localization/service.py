@@ -422,7 +422,9 @@ async def main() -> int:
                     help=f"стартовый маршрут (по умолч. config.DEFAULT_ROUTE={config.DEFAULT_ROUTE!r})")
     ap.add_argument("--no-nats", action="store_true", help="только терминал, без NATS")
     ap.add_argument("--no-recovery", action="store_true",
-                    help="отключить full-map recovery шардов (замер чистой скорости по шарду)")
+                    help="выключить ПОСТОЯННЫЕ попытки recovery при LOST (замер чистой "
+                         "скорости шарда); полная карта всё равно грузится и используется "
+                         "разово для выбора шарда на старте/смене маршрута/reset_shard")
     args = ap.parse_args()
 
     route = args.route or config.DEFAULT_ROUTE
