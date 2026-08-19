@@ -107,7 +107,6 @@ class DualNav:
     def resume(self):
         self.pf.resume()
         self.pr.resume()
-        self.reset_shard()
 
     def reset_shard(self):
         """Заставить обе камеры заново определиться по полной карте: оператор

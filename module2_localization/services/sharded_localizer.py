@@ -74,12 +74,9 @@ class ShardedLocalizer:
         self._recovery = factory(self.recovery_map, back_facing)
         LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
                     time.monotonic() - started)
-        # Стартовый шард (start_map) — это просто первый по манифесту, не факт
-        # что робот реально там. Полная карта решает, какой шард реально нужен,
-        # ДО первой настоящей команды — грузить стартовый шард вслепую смысла
-        # нет, почти всегда его тут же выгрузит recovery. locate() ниже уйдёт
-        # в recover(), пока не найдёт уверенный фикс, команды всё время "lost".
-        self._force_recovery = True
+        # Полную карту НЕ гоняем автоматически при создании — только по явной
+        # команде оператора (force_relocate(), дёргает кнопка «СБРОС ШАРДА» в
+        # админке). До этого locate() просто отдаёт lost, ничего не трогая.
         if preload_all:
             started = time.monotonic()
             for i, item in enumerate(self.shards):
@@ -260,6 +257,8 @@ class ShardedLocalizer:
                 return recovered
             return {"ok": False, "inliers": 0, "reason": "resume: релокализация по полной карте"}
         self._force_recovery = False
+        if self.current is None:
+            return {"ok": False, "inliers": 0, "reason": "шард не выбран — нажмите «СБРОС ШАРДА»"}
         result = self.current.locate(frame)
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
         if not current_good and self._lost_recovery_enabled:
