@@ -253,3 +253,13 @@ uv run --group dev mypy --config-file pyproject.toml \
 **Латч `stop` не сбрасывается.** Повторный проезд требует перезапуска демона.
 
 PYTORCH_NO_CUDA_MEMORY_CACHING=1 python3 -m module2_localization.service --shm
+
+OFFICE
+adapt = 3.0
+min = 10
+nodes = 30
+
+STREET
+adapt = 30
+min = 4
+nodes = 10
