@@ -41,8 +41,8 @@ class ShardedLocalizer:
         self.recovery_min_inliers = recovery_min_inliers
         self.shards = self._load_chain(start_map)
         self.index = next(i for i, item in enumerate(self.shards) if item["map"] == start_map)
-        self.current = factory(start_map, back_facing)
-        self._loaded: dict[int, Localizer] = {self.index: self.current}
+        self.current: Localizer | None = None
+        self._loaded: dict[int, Localizer] = {}
         self.current_map = start_map
         self.node_offset = int(self.shards[self.index]["global_node_start"])
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-preload")
@@ -52,13 +52,6 @@ class ShardedLocalizer:
         self._pending_good = 0
         self._last_global_node: int | None = None
         self._preload_started: float | None = None
-        if preload_all:
-            started = time.monotonic()
-            for i, item in enumerate(self.shards):
-                if i not in self._loaded:
-                    LOGGER.info("загрузка шарда в память %s", item["map"])
-                    self._loaded[i] = factory(str(item["map"]), back_facing)
-            LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
         self._force_recovery = False
         self._recovery = None
         self._recovery_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-recovery")
@@ -77,12 +70,25 @@ class ShardedLocalizer:
             self._recovery = factory(self.recovery_map, back_facing)
             LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
                         time.monotonic() - started)
-        # Стартовый шард (start_map) — это просто первый по манифесту, не факт что
-        # робот реально там. Раз recovery доступен — определяем реальный шард по
-        # позиции ДО первой настоящей команды: locate() ниже уйдёт в recover(),
-        # пока не найдёт уверенный фикс, а команды всё это время будут "lost".
         if self._recovery is not None:
+            # Стартовый шард (start_map) — это просто первый по манифесту, не факт
+            # что робот реально там. Полная карта решает, какой шард реально нужен,
+            # ДО первой настоящей команды — грузить стартовый шард вслепую смысла
+            # нет, почти всегда его тут же выгрузит recovery. locate() ниже уйдёт
+            # в recover(), пока не найдёт уверенный фикс, команды всё время "lost".
             self._force_recovery = True
+        else:
+            self.current = factory(start_map, back_facing)
+            self._loaded[self.index] = self.current
+        if preload_all:
+            started = time.monotonic()
+            for i, item in enumerate(self.shards):
+                if i not in self._loaded:
+                    LOGGER.info("загрузка шарда в память %s", item["map"])
+                    self._loaded[i] = factory(str(item["map"]), back_facing)
+            if self.current is None:
+                self.current = self._loaded[self.index]
+            LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
 
     def _load_chain(self, start_map: str) -> list[dict]:
         for manifest in self.maps_dir.glob("*_manifest.json"):
