@@ -203,12 +203,13 @@ def make_control_handler(nav, traffic=None, full_recovery=None):
                 return
             spec = getattr(config, "ROUTES", {}).get(nav.route, {})
             for camera in needed:
-                if nav.has_camera(camera):
-                    continue
                 map_name = spec.get(f"{camera}_map")
                 if not map_name:
                     print(f"[control] у маршрута {nav.route} нет карты для {camera}", flush=True)
                     return
+                # _ensure_camera сам ничего не грузит повторно, если карта уже
+                # та самая — важно не пропускать проверку через has_camera(),
+                # иначе можно оставить камеру с картой СТАРОГО маршрута.
                 if not await _ensure_camera(camera, map_name, nav.route):
                     return
             if not nav.set_mode(mode):
