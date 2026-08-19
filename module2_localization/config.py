@@ -4,7 +4,6 @@ _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
 # Карта
-DEFAULT_MAP = "route3_rear_bal5_01_of_05"  # первый rear-шард; следующие подгружаются автоматически
 ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
 ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
 SHARD_PRELOAD_NODES = 25       # ширина переходной зоны; соседний шард уже находится в памяти (= overlap-nodes шардов)
@@ -66,15 +65,25 @@ CAM_FPS = 30                   # частота кадров из сокета
 
 # Двухкамерная навигация
 NAV_MODE = "dual"             # по умолчанию ведёт front; rear включается как резерв после потерь
-FRONT_MAP = "route12_front_bal9_01_of_09"  # первый front-шард; следующие подгружаются автоматически
-REAR_MAP = DEFAULT_MAP        # карта задней камеры
 FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
 REAR_CAM_BACK = True          # задняя смотрит НАЗАД
+
+# Маршруты — карты жёстко зашиты здесь, ручной выбор карты в админке отключён.
+# camera: какая камера ведёт маршрут по умолчанию ("front" -> режим dual с фронтом
+# первым, "rear" -> режим rear). front_map/rear_map: None -> для этого маршрута
+# камера не используется вообще (не грузится, даже лениво).
 ROUTES = {
-    "route12": {"label": "Маршрут 1-2", "camera": "front", "map": FRONT_MAP},
-    "route3": {"label": "Маршрут 3", "camera": "rear", "map": REAR_MAP},
+    "1": {"label": "Маршрут 1 (1-2)", "camera": "front",
+          "front_map": "route1_front_01_of_09", "rear_map": None},
+    "2": {"label": "Маршрут 2 (3)", "camera": "rear",
+          "front_map": None, "rear_map": "route2_rear_01_of_05"},
+    "office": {"label": "Маршрут офис", "camera": "front",
+               "front_map": "map_2cam_front", "rear_map": "map_2cam_rear"},
 }
-DEFAULT_ROUTE = "route12"
+DEFAULT_ROUTE = "1"           # с каким маршрутом стартует демон по умолчанию; см. --route
+FRONT_MAP = ROUTES["1"]["front_map"]   # для инструментов вне daemon-потока (viz.py и т.п.)
+REAR_MAP = ROUTES["2"]["rear_map"]
+DEFAULT_MAP = REAR_MAP
 FRONT_SHM_SOCKET = "/tmp/cam_front_raw"  # AI-сокет передней (CSI IMX219), I420 1280x720
 REAR_SHM_SOCKET = "/tmp/cam_raw"         # AI-сокет задней (USB C920), I420 1280x720
 DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
@@ -88,34 +97,26 @@ TRAFFIC_LIGHT_ENABLED = False   # гонять детекцию+классифи
 # service добавляет global_node из shard.json. Отсутствие карты в словаре означает:
 # светофорная ветка на ней выключена, а не активна на всём маршруте.
 TRAFFIC_ZONES = {
-    # Пользователь указал rear как навигационные image/node 410..430.
-    "route3_rear_gap8_final": (410, 430),
-    "route3_rear_runtime_01_of_03": (410, 430),
-    "route3_rear_runtime_02_of_03": (410, 430),
-    "route3_rear_runtime_03_of_03": (410, 430),
-    "route3_rear_bal5_01_of_05": (410, 430),
-    "route3_rear_bal5_02_of_05": (410, 430),
-    "route3_rear_bal5_03_of_05": (410, 430),
-    "route3_rear_bal5_04_of_05": (410, 430),
-    "route3_rear_bal5_05_of_05": (410, 430),
-    # COLMAP image_id 870..880 точно соответствует runtime node 869..879.
-    "route12_front_colmap_full_1701_fullopencv_cpu10_final": (869, 879),
-    "route12_front_runtime_01_of_07": (869, 879),
-    "route12_front_runtime_02_of_07": (869, 879),
-    "route12_front_runtime_03_of_07": (869, 879),
-    "route12_front_runtime_04_of_07": (869, 879),
-    "route12_front_runtime_05_of_07": (869, 879),
-    "route12_front_runtime_06_of_07": (869, 879),
-    "route12_front_runtime_07_of_07": (869, 879),
-    "route12_front_bal9_01_of_09": (869, 879),
-    "route12_front_bal9_02_of_09": (869, 879),
-    "route12_front_bal9_03_of_09": (869, 879),
-    "route12_front_bal9_04_of_09": (869, 879),
-    "route12_front_bal9_05_of_09": (869, 879),
-    "route12_front_bal9_06_of_09": (869, 879),
-    "route12_front_bal9_07_of_09": (869, 879),
-    "route12_front_bal9_08_of_09": (869, 879),
-    "route12_front_bal9_09_of_09": (869, 879),
+    # Маршрут 2 (зад): навигационные image/node 410..430.
+    "route2_rear_full": (410, 430),
+    "route2_rear_01_of_05": (410, 430),
+    "route2_rear_02_of_05": (410, 430),
+    "route2_rear_03_of_05": (410, 430),
+    "route2_rear_04_of_05": (410, 430),
+    "route2_rear_05_of_05": (410, 430),
+    # Маршрут 1 (фронт): COLMAP image_id 870..880 точно соответствует runtime node 869..879.
+    "route1_front_full": (869, 879),
+    "route1_front_01_of_09": (869, 879),
+    "route1_front_02_of_09": (869, 879),
+    "route1_front_03_of_09": (869, 879),
+    "route1_front_04_of_09": (869, 879),
+    "route1_front_05_of_09": (869, 879),
+    "route1_front_06_of_09": (869, 879),
+    "route1_front_07_of_09": (869, 879),
+    "route1_front_08_of_09": (869, 879),
+    "route1_front_09_of_09": (869, 879),
+    # TODO: маршрут офис — узлы зоны светофора неизвестны (если там вообще есть
+    # светофор); добавить сюда "map_2cam_front": (start, stop), когда будет известно.
 }
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 

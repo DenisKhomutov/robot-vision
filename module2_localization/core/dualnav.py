@@ -1,28 +1,24 @@
 from .pilot import Pilot
 
 
-def _route_id(map_name):
-    if not map_name:
-        return None
-    if "route12" in map_name:
-        return "route12"
-    if "route3" in map_name:
-        return "route3"
-    return None
-
-
 class DualNav:
-    def __init__(self, front_loc, rear_loc, cfg, front_map=None, rear_map=None):
+    def __init__(self, front_loc, rear_loc, cfg, front_map=None, rear_map=None,
+                 route=None, front_route=None, rear_route=None):
         self.front, self.rear, self.cfg = front_loc, rear_loc, cfg
         self.pf, self.pr = Pilot(cfg), Pilot(cfg)
         self.mode = getattr(cfg, "NAV_MODE", "rear")
         self.active = "front"         # какая камера сейчас ведёт (в dual): старт с фронта
         self.front_lost = self.front_good = 0
-        self.front_map = front_map or getattr(cfg, "FRONT_MAP", None)
-        self.rear_map = rear_map or getattr(cfg, "REAR_MAP", None)
+        self.front_map = front_map
+        self.rear_map = rear_map
         self.front_node_offset = self._node_offset(self.front_map)
         self.rear_node_offset = self._node_offset(self.rear_map)
-        self.route = getattr(cfg, "DEFAULT_ROUTE", "route12")
+        self.route = route or getattr(cfg, "DEFAULT_ROUTE", "1")
+        # Какому маршруту принадлежит карта на каждой камере — используется для
+        # _maps_compatible(), чтобы не проверять по имени файла карты (имена
+        # произвольные, напр. office-карты "map_2cam_front"/"map_2cam_rear").
+        self.front_route = front_route if front_loc is not None else None
+        self.rear_route = rear_route if rear_loc is not None else None
 
     def set_route(self, route):
         routes = getattr(self.cfg, "ROUTES", {})
@@ -47,12 +43,13 @@ class DualNav:
             return 0
         return int(json.loads(path.read_text()).get("global_node_start", 0))
 
-    def set_localizer(self, camera, localizer, map_name):
+    def set_localizer(self, camera, localizer, map_name, route=None):
         if camera == "front":
             was_paused = self.pf.paused
             old = self.front
             self.front = localizer
             self.front_map = map_name
+            self.front_route = route
             self.front_node_offset = self._node_offset(map_name)
             self.pf = Pilot(self.cfg)
             if not was_paused:
@@ -63,6 +60,7 @@ class DualNav:
             old = self.rear
             self.rear = localizer
             self.rear_map = map_name
+            self.rear_route = route
             self.rear_node_offset = self._node_offset(map_name)
             self.pr = Pilot(self.cfg)
             if not was_paused:
@@ -165,8 +163,7 @@ class DualNav:
         return cmd
 
     def _maps_compatible(self):
-        front_route, rear_route = _route_id(self.front_map), _route_id(self.rear_map)
-        return front_route is None or rear_route is None or front_route == rear_route
+        return self.front_route is None or self.rear_route is None or self.front_route == self.rear_route
 
     def step(self, front_frame, rear_frame):
         if self.mode == "front":
@@ -205,8 +202,9 @@ class DualNav:
                 cmd["full_map_recovery"] = True
                 cmd["recovery_map"] = front_recovery_map
         elif not self._maps_compatible():
-            # Нельзя локализовать route12-кадр по route3-карте: при потере front
-            # безопасно останавливаемся, пока оператор не выберет совместимую rear-карту.
+            # Нельзя локализовать кадр одного маршрута по карте другого: при
+            # потере front безопасно останавливаемся, пока оператор не выберет
+            # совместимую rear-карту (тот же маршрут).
             cmd = {"move_type": "stop", "cam": "front", "map": self.front_map,
                    "reason": "front/rear maps belong to different routes", "map_mismatch": True}
         else:                          # ленивый резерв: заднюю гоняем только когда ведёт она

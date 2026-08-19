@@ -57,7 +57,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("video")
     parser.add_argument("--map", default=config.FRONT_MAP)
-    parser.add_argument("--full-map", default="route12_front_colmap_full_1701_fullopencv_cpu10_final")
+    parser.add_argument("--full-map", default="route1_front_full")
     parser.add_argument("--out", required=True)
     parser.add_argument("--step", type=int, default=8)
     parser.add_argument("--fps", type=float, default=None)

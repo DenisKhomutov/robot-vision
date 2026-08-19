@@ -3,7 +3,7 @@
 extract/match считаются до PnP и от содержимого сцены не зависят по существу.
 
     uv run --no-sync python -m module2_localization.tools.bench_locate \\
-        --map route3_rear_gap8_final --image любое_фото.jpg --n 15
+        --map route2_rear_full --image любое_фото.jpg --n 15
 """
 import argparse
 import sys

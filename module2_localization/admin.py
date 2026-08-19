@@ -147,7 +147,7 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="toggle gated" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
         <button class="toggle gated" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
       </div>
-      <div class="hint">Сменить режим/карту можно только на паузе</div>
+      <div class="hint">Сменить режим/маршрут можно только на паузе</div>
     </section>
 
     <section class="card">
@@ -160,27 +160,16 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
     <section class="card">
       <h2>Маршрут</h2>
-      <select id="routeSelect" class="gated">
-        <option value="route12">Маршрут 1-2</option>
-        <option value="route3">Маршрут 3</option>
-      </select>
+      <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
-    </section>
-
-    <section class="card">
-      <h2>Карта</h2>
-      <label class="field">Камера</label>
-      <select id="camera" class="gated"><option value="front">front</option><option value="rear">rear</option></select>
-      <label class="field">Полная карта или шард</label>
-      <select id="mapSelect" class="gated"></select>
-      <button id="setMap" class="gated" style="width:100%">ЗАГРУЗИТЬ КАРТУ</button>
+      <div class="hint">Карты зашиты за маршрутом — ручного выбора карты нет</div>
     </section>
 
     <p id="message"></p>
   </aside>
 </main>
 <script>
-let maps={},catalog=[],status={};
+let maps={},routes={},status={};
 const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
 const $=s=>document.querySelector(s);
 
@@ -192,7 +181,7 @@ function fit(points){
 }
 
 function draw(){
-  let name=status.map||$('#mapSelect').value,m=maps[name];
+  let name=status.map,m=maps[name];
   if(!m){if(name)ensureMap(name);return}
   let all=m.cloud.length?m.cloud:m.route,px=fit(all);
   ctx.fillStyle='#0a0c10';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -217,16 +206,15 @@ async function ensureMap(name){
   if(r.ok){maps[name]=await r.json();draw()}
 }
 
-function fillMaps(){
-  let cam=$('#camera').value,sel=$('#mapSelect'),old=sel.value;
+function fillRoutes(){
+  let sel=$('#routeSelect'),old=sel.value;
   sel.innerHTML='';
-  for(let m of catalog.filter(x=>x.camera===cam)){
+  for(let key in routes){
     let o=document.createElement('option');
-    o.value=m.name;o.textContent=m.shard?`${m.name} [${m.start}..${m.stop-1}]`:m.name;
+    o.value=key;o.textContent=routes[key];
     sel.appendChild(o);
   }
   if([...sel.options].some(o=>o.value===old))sel.value=old;
-  ensureMap(sel.value);
 }
 
 function setBadge(el,text,cls){el.textContent=text;el.className='badge '+cls}
@@ -291,12 +279,9 @@ document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
   if(b.dataset.enabled)body.enabled=b.dataset.enabled==='true';
   send(body);
 });
-$('#camera').onchange=fillMaps;
-$('#mapSelect').onchange=e=>ensureMap(e.target.value);
-$('#setMap').onclick=()=>send({cmd:'set_map',camera:$('#camera').value,map:$('#mapSelect').value});
 $('#setRoute').onclick=()=>send({cmd:'set_route',route:$('#routeSelect').value});
 
-fetch('/api/maps').then(r=>r.json()).then(x=>{catalog=x.maps;fillMaps()});
+fetch('/api/routes').then(r=>r.json()).then(x=>{routes=x.routes;fillRoutes()});
 tick();
 </script></body></html>"""
 
@@ -335,8 +320,6 @@ async def main() -> int:
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--nats-url", default=config.NATS_URL)
-    parser.add_argument("--rear-map", default=config.REAR_MAP)
-    parser.add_argument("--front-map", default=config.FRONT_MAP)
     args = parser.parse_args()
 
     catalog = map_catalog()
@@ -383,6 +366,10 @@ async def main() -> int:
                 await respond(writer, "200 OK", HTML.encode(), "text/html; charset=utf-8")
             elif method == "GET" and path == "/api/maps":
                 await respond(writer, "200 OK", json.dumps({"maps": catalog}).encode(), "application/json")
+            elif method == "GET" and path == "/api/routes":
+                routes = {key: str(spec.get("label", key)) for key, spec in config.ROUTES.items()}
+                await respond(writer, "200 OK", json.dumps({"routes": routes}, ensure_ascii=False).encode(),
+                              "application/json; charset=utf-8")
             elif method == "GET" and path == "/api/map":
                 name = parse_qs(urlsplit(target).query).get("name", [""])[0]
                 if name not in allowed_maps:
@@ -398,14 +385,9 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "set_mode", "set_map", "set_route", "set_traffic"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "set_mode", "set_route", "set_traffic"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
-                    return
-                if (command.get("cmd") == "set_map"
-                        and (command.get("camera") not in ("front", "rear")
-                             or command.get("map") not in allowed_maps)):
-                    await respond(writer, "400 Bad Request", b'{"message":"invalid map"}', "application/json")
                     return
                 if (command.get("cmd") == "set_route"
                         and command.get("route") not in config.ROUTES):
