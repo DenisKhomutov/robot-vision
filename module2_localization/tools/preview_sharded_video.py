@@ -88,6 +88,11 @@ def main() -> int:
         back_facing = "rear" in args.map.lower()
     print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
     localizer = build_runtime_localizer(args.map, back_facing)
+    # Шард больше не выбирается автоматически при создании (только по кнопке
+    # «СБРОС ШАРДА» в админке) — здесь кнопки нет, дёргаем то же самое напрямую.
+    relocate = getattr(localizer, "force_relocate", None)
+    if relocate is not None:
+        relocate()
     pilot = Pilot(config)
     pilot.resume()
     traffic = None
