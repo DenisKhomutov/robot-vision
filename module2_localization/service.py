@@ -188,6 +188,11 @@ def make_control_handler(nav, traffic=None, full_recovery=None):
             nav.pf.reset(); nav.pr.reset()
             if traffic:
                 traffic.reset()
+        elif cmd == "reset_traffic":
+            if traffic:
+                traffic.reset()
+            print("[control] сброс светофора: WAIT_RED, детектор снова активен", flush=True)
+            return
         elif cmd == "reset_shard":
             nav.reset_shard()
             print("[control] сброс шарда: релокализация по полной карте", flush=True)

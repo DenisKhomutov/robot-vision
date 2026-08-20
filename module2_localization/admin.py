@@ -83,7 +83,6 @@ button.stop{background:var(--red-bg);border-color:#6b2c25;color:#f6c3bb}
 button.toggle{position:relative}
 button.toggle.active{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 button.ghost{background:transparent}
-.hint{font-size:.76rem;color:var(--muted);margin:8px 0 2px}
 button:disabled,select:disabled{opacity:.4;cursor:not-allowed;filter:none}
 button:disabled:hover{filter:none}
 
@@ -134,10 +133,8 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="go big toggle" id="btnResume" data-cmd="resume">СТАРТ</button>
         <button class="stop big toggle" id="btnPause" data-cmd="pause">ПАУЗА</button>
       </div>
-      <div class="hint"></div>
       <button class="ghost" data-cmd="reset" style="width:100%;margin-top:8px">СБРОС</button>
       <button class="ghost" data-cmd="reset_shard" style="width:100%;margin-top:8px">СБРОС ШАРДА (релокализация)</button>
-      <div class="hint">Робота передвинули руками — жать, если едет странно/по чужому шарду</div>
     </section>
 
     <section class="card">
@@ -147,7 +144,6 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="toggle gated" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
         <button class="toggle gated" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
       </div>
-      <div class="hint">Сменить режим/маршрут можно только на паузе</div>
     </section>
 
     <section class="card">
@@ -156,13 +152,13 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="toggle" id="btnTlOn" data-cmd="set_traffic" data-enabled="true">ВКЛ</button>
         <button class="toggle" id="btnTlOff" data-cmd="set_traffic" data-enabled="false">ВЫКЛ</button>
       </div>
+      <button class="ghost" data-cmd="reset_traffic" style="width:100%;margin-top:8px">СБРОС СВЕТОФОРА</button>
     </section>
 
     <section class="card">
       <h2>Маршрут</h2>
       <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
-      <div class="hint">Карты зашиты за маршрутом — ручного выбора карты нет</div>
     </section>
 
     <p id="message"></p>
@@ -385,7 +381,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "set_mode", "set_route", "set_traffic"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "set_traffic"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return
