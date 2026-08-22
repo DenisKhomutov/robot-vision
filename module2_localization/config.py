@@ -81,6 +81,8 @@ ROUTES = {
             "front_map": "1-2/front_shard/01_of_18", "rear_map": None},
     "2": {"label": "Маршрут 2 (3)", "camera": "rear",
           "front_map": None, "rear_map": "2/rear_shard/01_of_10"},
+    "2-1": {"label": "Маршрут 2-1", "camera": "front",
+            "front_map": "2-1/front_shard/01_of_25", "rear_map": None},
     "office": {"label": "Маршрут офис", "camera": "front",
                "front_map": "office/front", "rear_map": "office/rear"},
 }
