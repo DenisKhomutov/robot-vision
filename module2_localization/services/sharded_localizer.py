@@ -88,7 +88,7 @@ class ShardedLocalizer:
             LOGGER.info("вся цепочка из %d шардов загружена за %.2fс", len(self.shards), time.monotonic() - started)
 
     def _load_chain(self, start_map: str) -> list[dict]:
-        for manifest in self.maps_dir.glob("*_manifest.json"):
+        for manifest in self.maps_dir.glob("**/manifest.json"):
             data = json.loads(manifest.read_text())
             shards = data.get("shards", [])
             if any(item.get("map") == start_map for item in shards):

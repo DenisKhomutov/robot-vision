@@ -16,7 +16,7 @@ class DualNav:
         self.route = route or getattr(cfg, "DEFAULT_ROUTE", "1")
         # Какому маршруту принадлежит карта на каждой камере — используется для
         # _maps_compatible(), чтобы не проверять по имени файла карты (имена
-        # произвольные, напр. office-карты "map_2cam_front"/"map_2cam_rear").
+        # произвольные, напр. office-карты "office/front"/"office/rear").
         self.front_route = front_route if front_loc is not None else None
         self.rear_route = rear_route if rear_loc is not None else None
 

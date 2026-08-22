@@ -109,7 +109,12 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   <span id="recovery" class="badge ok">shard</span>
 </header>
 <main>
-  <div class="map-wrap"><canvas id="map" width="900" height="760"></canvas>
+  <div class="map-wrap">
+    <div class="row2" style="grid-template-columns:1fr 1fr;margin-bottom:10px">
+      <button class="toggle active" id="tabShard" data-tab="shard">ШАРД</button>
+      <button class="toggle" id="tabFull" data-tab="full">ЕДИНАЯ КАРТА</button>
+    </div>
+    <canvas id="map" width="900" height="760"></canvas>
     <div class="legend">
       <span><i style="background:#d4ae45"></i>маршрут</span>
       <span><i style="background:#ff4b4b"></i>текущая позиция</span>
@@ -165,9 +170,17 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   </aside>
 </main>
 <script>
-let maps={},routes={},status={};
+let maps={},routes={},status={},catalog=[],activeTab='shard';
 const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
 const $=s=>document.querySelector(s);
+
+function fullMapName(){
+  // Единая карта маршрута — запись без shard, чья папка начинается с "<route>/".
+  let route=status.route;
+  if(!route)return null;
+  let hit=catalog.find(m=>!m.shard&&m.name.startsWith(route+'/'));
+  return hit?hit.name:null;
+}
 
 function fit(points){
   let xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
@@ -177,7 +190,7 @@ function fit(points){
 }
 
 function draw(){
-  let name=status.map,m=maps[name];
+  let name=activeTab==='full'?fullMapName():status.map,m=name?maps[name]:null;
   if(!m){if(name)ensureMap(name);return}
   let all=m.cloud.length?m.cloud:m.route,px=fit(all);
   ctx.fillStyle='#0a0c10';ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -276,8 +289,15 @@ document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
   send(body);
 });
 $('#setRoute').onclick=()=>send({cmd:'set_route',route:$('#routeSelect').value});
+document.querySelectorAll('button[data-tab]').forEach(b=>b.onclick=()=>{
+  activeTab=b.dataset.tab;
+  $('#tabShard').classList.toggle('active',activeTab==='shard');
+  $('#tabFull').classList.toggle('active',activeTab==='full');
+  draw();
+});
 
 fetch('/api/routes').then(r=>r.json()).then(x=>{routes=x.routes;fillRoutes()});
+fetch('/api/maps').then(r=>r.json()).then(x=>{catalog=x.maps});
 tick();
 </script></body></html>"""
 
@@ -295,11 +315,15 @@ def map_payload(name: str, cloud_limit: int = 12_000) -> dict[str, object]:
 
 def map_catalog() -> list[dict[str, object]]:
     result = []
-    for path in sorted(config.MAPS_DIR.iterdir()):
-        if not path.is_dir() or not (path / "runtime.npz").exists() or not (path / "aliked_bank.npz").exists():
+    # Карты лежат вложенно: maps/<маршрут>/<камера>_full или .../<камера>_shard/NN_of_MM.
+    # "Имя карты" везде в коде — путь относительно MAPS_DIR (со слэшами), не просто basename.
+    for runtime_file in sorted(config.MAPS_DIR.rglob("runtime.npz")):
+        path = runtime_file.parent
+        if not (path / "aliked_bank.npz").exists():
             continue
-        camera = "front" if "front" in path.name else "rear" if "rear" in path.name else "unknown"
-        item: dict[str, object] = {"name": path.name, "camera": camera, "shard": False}
+        name = path.relative_to(config.MAPS_DIR).as_posix()
+        camera = "front" if "front" in name else "rear" if "rear" in name else "unknown"
+        item: dict[str, object] = {"name": name, "camera": camera, "shard": False}
         metadata = path / "shard.json"
         if metadata.exists():
             shard = json.loads(metadata.read_text())

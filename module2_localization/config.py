@@ -75,16 +75,17 @@ REAR_CAM_BACK = True          # задняя смотрит НАЗАД
 # camera: какая камера ведёт маршрут по умолчанию ("front" -> режим dual с фронтом
 # первым, "rear" -> режим rear). front_map/rear_map: None -> для этого маршрута
 # камера не используется вообще (не грузится, даже лениво).
+# Папки карт унифицированы: maps/<маршрут>/<камера>_full и .../<камера>_shard/NN_of_MM.
 ROUTES = {
-    "1": {"label": "Маршрут 1 (1-2)", "camera": "front",
-          "front_map": "route1_front18_01_of_18", "rear_map": None},
+    "1-2": {"label": "Маршрут 1-2", "camera": "front",
+            "front_map": "1-2/front_shard/01_of_18", "rear_map": None},
     "2": {"label": "Маршрут 2 (3)", "camera": "rear",
-          "front_map": None, "rear_map": "route2_rear10_01_of_10"},
+          "front_map": None, "rear_map": "2/rear_shard/01_of_10"},
     "office": {"label": "Маршрут офис", "camera": "front",
-               "front_map": "map_2cam_front", "rear_map": "map_2cam_rear"},
+               "front_map": "office/front", "rear_map": "office/rear"},
 }
-DEFAULT_ROUTE = "1"           # с каким маршрутом стартует демон по умолчанию; см. --route
-FRONT_MAP = ROUTES["1"]["front_map"]   # для инструментов вне daemon-потока (viz.py и т.п.)
+DEFAULT_ROUTE = "1-2"         # с каким маршрутом стартует демон по умолчанию; см. --route
+FRONT_MAP = ROUTES["1-2"]["front_map"]   # для инструментов вне daemon-потока (viz.py и т.п.)
 REAR_MAP = ROUTES["2"]["rear_map"]
 DEFAULT_MAP = REAR_MAP
 FRONT_SHM_SOCKET = "/tmp/cam_front_raw"  # AI-сокет передней (CSI IMX219), I420 1280x720
@@ -101,40 +102,40 @@ TRAFFIC_LIGHT_ENABLED = False   # гонять детекцию+классифи
 # светофорная ветка на ней выключена, а не активна на всём маршруте.
 TRAFFIC_ZONES = {
     # Маршрут 2 (зад): навигационные image/node 410..430.
-    "route2_rear_full": (410, 430),
-    "route2_rear10_01_of_10": (410, 430),
-    "route2_rear10_02_of_10": (410, 430),
-    "route2_rear10_03_of_10": (410, 430),
-    "route2_rear10_04_of_10": (410, 430),
-    "route2_rear10_05_of_10": (410, 430),
-    "route2_rear10_06_of_10": (410, 430),
-    "route2_rear10_07_of_10": (410, 430),
-    "route2_rear10_08_of_10": (410, 430),
-    "route2_rear10_09_of_10": (410, 430),
-    "route2_rear10_10_of_10": (410, 430),
+    "2/rear_full": (410, 430),
+    "2/rear_shard/01_of_10": (410, 430),
+    "2/rear_shard/02_of_10": (410, 430),
+    "2/rear_shard/03_of_10": (410, 430),
+    "2/rear_shard/04_of_10": (410, 430),
+    "2/rear_shard/05_of_10": (410, 430),
+    "2/rear_shard/06_of_10": (410, 430),
+    "2/rear_shard/07_of_10": (410, 430),
+    "2/rear_shard/08_of_10": (410, 430),
+    "2/rear_shard/09_of_10": (410, 430),
+    "2/rear_shard/10_of_10": (410, 430),
     # Маршрут 1 (фронт): сдвинуто ближе к светофору (было 869..879), чтобы робот
     # не останавливался слишком заранее — небезопаснее по краю, но короче стоп.
-    "route1_front_full": (877, 886),
-    "route1_front18_01_of_18": (877, 886),
-    "route1_front18_02_of_18": (877, 886),
-    "route1_front18_03_of_18": (877, 886),
-    "route1_front18_04_of_18": (877, 886),
-    "route1_front18_05_of_18": (877, 886),
-    "route1_front18_06_of_18": (877, 886),
-    "route1_front18_07_of_18": (877, 886),
-    "route1_front18_08_of_18": (877, 886),
-    "route1_front18_09_of_18": (877, 886),
-    "route1_front18_10_of_18": (877, 886),
-    "route1_front18_11_of_18": (877, 886),
-    "route1_front18_12_of_18": (877, 886),
-    "route1_front18_13_of_18": (877, 886),
-    "route1_front18_14_of_18": (877, 886),
-    "route1_front18_15_of_18": (877, 886),
-    "route1_front18_16_of_18": (877, 886),
-    "route1_front18_17_of_18": (877, 886),
-    "route1_front18_18_of_18": (877, 886),
+    "1-2/front_full": (877, 886),
+    "1-2/front_shard/01_of_18": (877, 886),
+    "1-2/front_shard/02_of_18": (877, 886),
+    "1-2/front_shard/03_of_18": (877, 886),
+    "1-2/front_shard/04_of_18": (877, 886),
+    "1-2/front_shard/05_of_18": (877, 886),
+    "1-2/front_shard/06_of_18": (877, 886),
+    "1-2/front_shard/07_of_18": (877, 886),
+    "1-2/front_shard/08_of_18": (877, 886),
+    "1-2/front_shard/09_of_18": (877, 886),
+    "1-2/front_shard/10_of_18": (877, 886),
+    "1-2/front_shard/11_of_18": (877, 886),
+    "1-2/front_shard/12_of_18": (877, 886),
+    "1-2/front_shard/13_of_18": (877, 886),
+    "1-2/front_shard/14_of_18": (877, 886),
+    "1-2/front_shard/15_of_18": (877, 886),
+    "1-2/front_shard/16_of_18": (877, 886),
+    "1-2/front_shard/17_of_18": (877, 886),
+    "1-2/front_shard/18_of_18": (877, 886),
     # TODO: маршрут офис — узлы зоны светофора неизвестны (если там вообще есть
-    # светофор); добавить сюда "map_2cam_front": (start, stop), когда будет известно.
+    # светофор); добавить сюда "office/front": (start, stop), когда будет известно.
 }
 TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 
