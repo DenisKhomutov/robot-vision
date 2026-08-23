@@ -159,7 +159,7 @@ class VideoFileSource:
         pass
 
 
-def make_control_handler(nav, traffic=None, full_recovery=None):
+def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
     async def _ensure_camera(camera, map_name, route):
         """Догрузить карту камеры под конкретный маршрут, если ещё не та."""
         if nav.has_camera(camera) and getattr(nav, f"{camera}_map", None) == map_name:
@@ -251,6 +251,14 @@ def make_control_handler(nav, traffic=None, full_recovery=None):
             enabled = bool(c.get("enabled"))
             await traffic.set_enabled(enabled)
             print(f"[control] детекция светофора -> {'ON' if enabled else 'OFF'}", flush=True)
+            return
+        elif cmd == "set_direction":
+            if direction is None:
+                print("[control] направление недоступно", flush=True)
+                return
+            enabled = bool(c.get("enabled"))
+            direction.set_enabled(enabled)
+            print(f"[control] расчёт направления -> {'ON' if enabled else 'OFF'}", flush=True)
             return
         else:
             print(f"[control] неизвестная команда: {cmd}", flush=True)
@@ -378,10 +386,40 @@ class TrafficController:
         return result
 
 
+class DirectionController:
+    """Runtime on/off (как светофор) для forward/backward: статичные зоны из конфига,
+    без модели и пересчёта на лету — просто попадание global_node в диапазон."""
+
+    def __init__(self, cfg, enabled=False):
+        self.zones = getattr(cfg, "BACKWARD_ZONES", {})
+        self.deadzone = getattr(cfg, "DEADZONE_DEG", 4.0)
+        self.enabled = bool(enabled)
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+
+    def process(self, cmd):
+        cmd["direction_enabled"] = self.enabled
+        if not self.enabled:
+            return
+        ranges = self.zones.get(cmd.get("map"))
+        node = cmd.get("global_node", cmd.get("node"))
+        backward = bool(ranges and node is not None and any(a <= node <= b for a, b in ranges))
+        cmd["direction"] = "backward" if backward else "forward"
+        # камера физически смотрит вперёд; при заднем ходе истинное направление
+        # движения противоположно тому, куда смотрит камера — поворот азимута
+        # на 180° (== пересчёт через -fwd, эквивалентно по atan2) даёт угол
+        # относительно РЕАЛЬНОГО хода, а не оптики.
+        if backward and cmd.get("deg") is not None and cmd.get("move_type") not in ("stop", "lost"):
+            deg = ((cmd["deg"] + 180.0 + 180.0) % 360.0) - 180.0
+            cmd["deg"] = deg
+            cmd["move_type"] = "straight" if abs(deg) < self.deadzone else ("right" if deg > 0 else "left")
+
+
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,
-                  full_recovery=None) -> None:
+                  full_recovery=None, direction=None) -> None:
     if nc:
-        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic, full_recovery))
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic, full_recovery, direction))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
         stamp, rframe = rear_src.latest()               # ведём цикл по задней (всегда есть)
@@ -389,6 +427,8 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
             cmd = nav.step(fframe, rframe)
+            if direction is not None:
+                direction.process(cmd)
             # светофор: детекция на переднем кадре. Решение ПОЛНОСТЬЮ здесь, мозгу
             # отдельно ничего не шлём — только перебиваем команду навигации на stop,
             # пока машина состояний не разрешит ехать (state GO).
@@ -508,6 +548,9 @@ async def main() -> int:
             await traffic.preload()
         print(f"[TL] runtime-переключатель готов; старт={'ON' if traffic.enabled else 'OFF'}", flush=True)
 
+    direction = DirectionController(config, enabled=getattr(config, "DIRECTION_ENABLED", False))
+    print(f"[dir] runtime-переключатель готов; старт={'ON' if direction.enabled else 'OFF'}", flush=True)
+
     nc = None
     if not args.no_nats:
         try:
@@ -526,7 +569,7 @@ async def main() -> int:
         front_src.start()
     rear_src.start()
     try:
-        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic, recovery)
+        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic, recovery, direction)
     finally:
         if front_src:
             front_src.stop()

@@ -106,6 +106,7 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   <span id="fresh" class="badge bad">нет телеметрии</span>
   <span id="mode" class="badge">—</span>
   <span id="traffic" class="badge">светофор off</span>
+  <span id="direction" class="badge">направление off</span>
   <span id="recovery" class="badge ok">shard</span>
 </header>
 <main>
@@ -158,6 +159,14 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="toggle" id="btnTlOff" data-cmd="set_traffic" data-enabled="false">ВЫКЛ</button>
       </div>
       <button class="ghost" data-cmd="reset_traffic" style="width:100%;margin-top:8px">СБРОС СВЕТОФОРА</button>
+    </section>
+
+    <section class="card">
+      <h2>Направление (эксперимент)</h2>
+      <div class="row2">
+        <button class="toggle" id="btnDirOn" data-cmd="set_direction" data-enabled="true">ВКЛ</button>
+        <button class="toggle" id="btnDirOff" data-cmd="set_direction" data-enabled="false">ВЫКЛ</button>
+      </div>
     </section>
 
     <section class="card">
@@ -246,6 +255,10 @@ async function tick(){
     setBadge($('#recovery'),status.full_map_recovery?'full recovery':'shard',
       status.full_map_recovery?'warn':'ok');
 
+    setBadge($('#direction'),
+      `направление ${status.direction_enabled?'вкл':'выкл'}${status.direction?' · '+status.direction:''}`,
+      status.direction_enabled?'ok':'');
+
     $('#mode').textContent=(status.mode||'—')+(status.cam?' · '+status.cam:'');
     $('#mode').className='badge'+(status.map_mismatch?' bad':'');
 
@@ -268,6 +281,8 @@ async function tick(){
     $('#btnDual').classList.toggle('active',status.mode==='dual');
     $('#btnTlOn').classList.toggle('active',!!status.traffic_enabled);
     $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
+    $('#btnDirOn').classList.toggle('active',!!status.direction_enabled);
+    $('#btnDirOff').classList.toggle('active',!status.direction_enabled);
 
     // Смена режима/карты/маршрута разрешена только на паузе — как на сервере.
     document.querySelectorAll('.gated').forEach(el=>el.disabled=!paused);
@@ -405,7 +420,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "set_traffic"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "set_traffic", "set_direction"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return

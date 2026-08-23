@@ -19,7 +19,8 @@ def analyze(image: Image.Image) -> dict[str, Any]:
     # светофор не найден
     if not boxes:
         return {"status": "no_traffic_light", "signal": None, "confidence": None, "box": None}
-    box = boxes[0]
+    # если детекций несколько — доверяем самой большой рамке (это ближайший светофор)
+    box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
     crop = image.crop(box)
     label, conf = get_classifier().classify(crop)
     _save_crop(crop, label)

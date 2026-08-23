@@ -81,6 +81,8 @@ def main() -> int:
                         help="парное видео передней камеры той же поездки — для честного теста "
                              "светофора, когда навигация идёт по --map ЗАДНЕЙ карты (в демоне "
                              "детекция всегда на кадре фронта, а не активной навигационной камеры)")
+    parser.add_argument("--direction", action=argparse.BooleanOptionalAction, default=False,
+                        help="проверка зон заднего хода (config.BACKWARD_ZONES)")
     args = parser.parse_args()
 
     back_facing = args.back_facing
@@ -156,6 +158,19 @@ def main() -> int:
         command["global_node"] = global_node
         command["map"] = map_name
 
+        direction_label = "forward"
+        if args.direction:
+            ranges = config.BACKWARD_ZONES.get(map_name)
+            backward = bool(ranges and global_node is not None
+                             and any(a <= global_node <= b for a, b in ranges))
+            direction_label = "backward" if backward else "forward"
+            command["direction"] = direction_label
+            if backward and command.get("deg") is not None and command.get("move_type") not in ("stop", "lost"):
+                deg = ((command["deg"] + 180.0 + 180.0) % 360.0) - 180.0
+                command["deg"] = deg
+                dz = config.DEADZONE_DEG
+                command["move_type"] = "straight" if abs(deg) < dz else ("right" if deg > 0 else "left")
+
         zone = config.TRAFFIC_ZONES.get(map_name)
         in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]
         traffic_label = "OFF"
@@ -199,7 +214,9 @@ def main() -> int:
             "recovery_map": result.get("_recovery_map"), "pilot_reject": pilot.jump,
             "elapsed_ms": round(elapsed_ms, 2),
             "command": pre_traffic_move_type, "command_after_traffic": command.get("move_type"),
+            "deg": command.get("deg"), "target_node": command.get("target_node"),
             "traffic_in_zone": in_zone, "traffic_state": traffic_label, "traffic_signal": traffic_signal,
+            "direction": direction_label if args.direction else None,
         }, ensure_ascii=False) + "\n")
 
         good = result.get("ok") and pilot.accepted
@@ -229,7 +246,11 @@ def main() -> int:
         cv2.putText(bar, f"MAP: {map_name}", (18, 30), FONT, 0.65, (215, 215, 215), 2)
         cv2.putText(bar, f"node local={command.get('node')} global={global_node}  command={command.get('move_type','lost').upper()}  deg={command.get('deg',0):+.1f}",
                     (18, 62), FONT, 0.68, (100, 255, 150) if command.get("move_type") != "lost" else (80, 80, 240), 2)
-        cv2.putText(bar, f"TRAFFIC: {traffic_label}", (18, 96), FONT, 0.65, (80, 210, 255), 2)
+        tl_text = f"TRAFFIC: {traffic_label}"
+        if args.direction:
+            tl_text += f"   DIRECTION: {direction_label.upper()}"
+        dir_color = (0, 140, 255) if direction_label == "backward" else (80, 210, 255)
+        cv2.putText(bar, tl_text, (18, 96), FONT, 0.65, dir_color if args.direction else (80, 210, 255), 2)
         preload_text = "none" if preload["target"] is None else f"{preload['target']} ({'READY' if preload['ready'] else 'LOADING'})"
         cv2.putText(bar, f"preload: {preload_text}", (900, 30), FONT, 0.58, (180, 180, 180), 1)
         cv2.putText(bar, f"{elapsed_ms:.0f} ms  source {source_index}/{total or '?'}  fixes {fixed}/{processed}",
