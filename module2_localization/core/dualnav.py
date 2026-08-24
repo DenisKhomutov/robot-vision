@@ -136,6 +136,11 @@ class DualNav:
     def _front_only(self, ff):
         if self.front is None:
             return {"move_type": "stop", "reason": "нет карты передней камеры", "cam": "front"}
+        if self.pf.paused:
+            # На паузе НЕ гоняем locate() — иначе дорогой recovery-поиск по полной
+            # карте продолжает молотить впустую, просто результат выбрасывается.
+            cmd = self.pf.step(None)
+            return self._map_fields(cmd, "front", self.front_map, self.front_node_offset)
         result = self.front.locate(ff)
         recovery = bool(result.get("_full_map_recovery"))
         recovery_map = result.get("_recovery_map")
@@ -150,6 +155,9 @@ class DualNav:
     def _rear(self, rf):
         if self.rear is None:
             return {"move_type": "stop", "reason": "нет карты задней камеры", "cam": "rear"}
+        if self.pr.paused:
+            cmd = self.pr.step(None)
+            return self._map_fields(cmd, "rear", self.rear_map, self.rear_node_offset)
         result = self.rear.locate(rf)
         recovery = bool(result.get("_full_map_recovery"))
         recovery_map = result.get("_recovery_map")
@@ -175,6 +183,13 @@ class DualNav:
         if self.mode != "dual" or self.front is None or front_frame is None:
             cmd = self._rear(rear_frame)
             cmd["mode"] = "rear"
+            cmd["route"] = self.route
+            return cmd
+
+        if self.pf.paused and self.pr.paused:
+            cmd = self.pf.step(None)
+            cmd = self._map_fields(cmd, "front", self.front_map, self.front_node_offset)
+            cmd["mode"] = "dual"
             cmd["route"] = self.route
             return cmd
 
