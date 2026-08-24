@@ -8,6 +8,15 @@ LOOKAHEAD_MIN = 5
 LOOKAHEAD_ADAPT = 8.0
 STOP_END_NODES = 3
 
+# Последний известный speed_pwm (0..255) от мозга через NATS (см. service.py).
+# None -> нет данных ещё -> берём статичный LOOKAHEAD_NODES, как раньше.
+_speed_pwm = None
+
+
+def set_speed_pwm(value):
+    global _speed_pwm
+    _speed_pwm = value
+
 
 class Localizer:
 
@@ -24,7 +33,14 @@ class Localizer:
         return None
 
     def command(self, C, fwd, lookahead_nodes=None, mode=None, stanley_k=None):
-        lookahead_nodes = getattr(self, "lookahead", LOOKAHEAD_NODES) if lookahead_nodes is None else lookahead_nodes
+        if lookahead_nodes is None:
+            speed_div = getattr(self, "lookahead_speed_div", None)
+            if speed_div and _speed_pwm is not None:
+                lmin = getattr(self, "lookahead_min", LOOKAHEAD_MIN)
+                lmax = getattr(self, "lookahead_max", None) or getattr(self, "lookahead", LOOKAHEAD_NODES)
+                lookahead_nodes = max(lmin, min(_speed_pwm / speed_div, lmax))
+            else:
+                lookahead_nodes = getattr(self, "lookahead", LOOKAHEAD_NODES)
         mode = getattr(self, "steer", "pursuit") if mode is None else mode
         stanley_k = getattr(self, "stanley_k", STANLEY_K) if stanley_k is None else stanley_k
         d = np.linalg.norm(self.route - C, axis=1)

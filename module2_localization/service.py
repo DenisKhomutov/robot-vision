@@ -560,6 +560,20 @@ async def main() -> int:
             print(f"[NATS] недоступен ({e}); печатаю только в терминал", flush=True)
             nc = None
 
+    if nc is not None:
+        from .core import route as route_mod
+
+        async def on_speed(msg):
+            try:
+                data = json.loads(msg.data.decode())
+                pwm = data.get("speed_pwm")
+            except (json.JSONDecodeError, AttributeError):
+                return
+            if pwm is not None:
+                route_mod.set_speed_pwm(float(pwm))
+
+        await nc.subscribe(getattr(config, "NATS_SPEED_TOPIC", "ai.nats_speed_topic"), on_speed)
+
     stop_evt = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

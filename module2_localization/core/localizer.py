@@ -21,7 +21,8 @@ class AlikedLocalizer:
                  focal_fallback=1.2, min_pairs=8, pnp_confidence=0.999, pnp_iters=1000,
                  lookahead=12, lookahead_min=5, lookahead_adapt=8.0, deadzone=4.0,
                  stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
-                 lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0):
+                 lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0,
+                 lookahead_speed_div=None, lookahead_max=None):
         from hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
@@ -38,6 +39,8 @@ class AlikedLocalizer:
         self.lookahead = lookahead          # -> command() через getattr
         self.lookahead_min = lookahead_min
         self.lookahead_adapt = lookahead_adapt
+        self.lookahead_speed_div = lookahead_speed_div  # узлы = speed_pwm / этот коэф. (None = выкл)
+        self.lookahead_max = lookahead_max
         self.deadzone = deadzone
         self.stanley_k = stanley_k
         self.heading_gate = heading_gate
