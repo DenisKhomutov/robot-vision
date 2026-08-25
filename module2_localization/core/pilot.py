@@ -103,6 +103,7 @@ class Pilot:
             cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
                    "reason": "route_complete"}
         if self.paused:
-            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"), "paused": True}
+            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
+                   "reason": "operator_paused", "paused": True}
         cmd["ts"] = round(time.time(), 3)
         return cmd

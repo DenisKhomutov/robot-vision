@@ -193,6 +193,7 @@ def main() -> int:
                 traffic_label = traffic.state
                 if not traffic.go and command.get("move_type") != "lost":
                     command["move_type"], command["deg"] = "stop", 0.0
+                    command["reason"] = "traffic_light_stop"
                 if traffic.go:
                     traffic_completed = True
                     traffic_label = "GO LATCHED / DETECTOR OFF"

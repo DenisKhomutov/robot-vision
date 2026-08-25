@@ -405,6 +405,7 @@ class TrafficController:
         cmd["traffic_state"] = self.branch.state
         if in_zone and not self.branch.go and cmd.get("move_type") != "lost":
             cmd["move_type"], cmd["deg"] = "stop", 0.0
+            cmd["reason"] = "traffic_light_stop"
         return result
 
 
