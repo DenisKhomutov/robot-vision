@@ -240,7 +240,7 @@ def main():
         K = cal["K"]
         dd = cal["dist"].ravel()
         cw, ch = (int(x) for x in cal["image_size"])
-        sx, sy = w / cw, h / ch          # пересчёт K, если калибровка снята в другом разрешении
+        sx, sy = w / cw, h / ch
         fx, fy, cxp, cyp = K[0, 0] * sx, K[1, 1] * sy, K[0, 2] * sx, K[1, 2] * sy
         params = np.array([fx, fy, cxp, cyp, dd[0], dd[1], dd[2], dd[3]], np.float64).tobytes()
         db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)", (1, 4, w, h, params, 0))
@@ -382,10 +382,10 @@ def main():
                "экспорт runtime.npz", quiet=False):
         return 1
 
-    # Always produce a self-contained model for the raw COLMAP GUI.  Merely
-    # writing image_path to project.ini is not robust: an already opened GUI
-    # may retain another project path.  Absolute names in the GUI-only model
-    # make image viewing independent of the GUI's current options.
+
+
+
+
     gui = work / "gui"
     gui_model = gui / "sparse" / "0"
     gui_images = gui / "images"

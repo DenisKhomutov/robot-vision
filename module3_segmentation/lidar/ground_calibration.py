@@ -50,7 +50,7 @@ def fit_plane(pts, iters=300, thr=0.05):
         cnt = int((d < thr).sum())
         if cnt > best_in:
             best_in, best_n = cnt, nrm
-    if best_n[2] < 0:   # нормаль ориентируем последовательно
+    if best_n[2] < 0:
         best_n = -best_n
     return best_n, best_in
 
@@ -66,17 +66,17 @@ def main():
           f"Y[{pts[:,1].min():+.2f},{pts[:,1].max():+.2f}]  "
           f"Z[{pts[:,2].min():+.2f},{pts[:,2].max():+.2f}]")
 
-    # ищем пол среди точек НЕ прямо по курсу (уберём дальний перёд, оставим низ вокруг)
+
     n, inl = fit_plane(pts)
     print(f"\nплоскость земли (RANSAC): нормаль = [{n[0]:+.3f}, {n[1]:+.3f}, {n[2]:+.3f}]  "
           f"инлайеров {inl}/{len(pts)} ({100*inl/len(pts):.0f}%)")
 
-    # вперёд считаем +Z лидара (макушка). Нормаль пола = "вверх" мира.
+
     fwd = np.array([0, 0, 1.0])
     up = n.copy()
-    # угол между нормалью пола и осями X/Y лидара покажет roll
-    roll = np.degrees(np.arctan2(up[0], up[1]))   # закат вокруг оси вперёд(Z)
-    tilt_fwd = np.degrees(np.arcsin(np.clip(up @ fwd, -1, 1)))  # завал нормали в сторону вперёд
+
+    roll = np.degrees(np.arctan2(up[0], up[1]))
+    tilt_fwd = np.degrees(np.arcsin(np.clip(up @ fwd, -1, 1)))
     print(f"\nнормаль пола относительно осей лидара:")
     print(f"  roll (закат вокруг 'вперёд'):     {roll:+.1f} deg")
     print(f"  наклон нормали к оси 'вперёд':     {tilt_fwd:+.1f} deg  (0 = лидар строго вертикально)")

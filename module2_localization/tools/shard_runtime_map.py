@@ -43,8 +43,8 @@ def balanced_edges(weight_per_node: np.ndarray, parts: int) -> np.ndarray:
     edges = np.searchsorted(cum, targets, side="left")
     edges = np.clip(edges, 0, len(weight_per_node))
     edges[0], edges[-1] = 0, len(weight_per_node)
-    # Гарантируем строго возрастающие границы (могут схлопнуться на очень
-    # неровном распределении веса) — сдвигаем дубликаты вперёд на 1 узел.
+
+
     for i in range(1, len(edges)):
         if edges[i] <= edges[i - 1]:
             edges[i] = edges[i - 1] + 1
@@ -119,8 +119,8 @@ def main() -> int:
     else:
         LOGGER.info("нарезка по ближайшему узлу (нет sparse/0 или --no-track-visibility)")
 
-    # Fallback/подстраховка: точка без трека или вне видимости всё равно попадёт
-    # в шард своего ближайшего узла. Chunking avoids an Npoints*Nnodes allocation.
+
+
     point_node = np.empty(len(points), np.int32)
     route = pos.astype(np.float32, copy=False)
     for start in range(0, len(points), 10_000):
@@ -129,8 +129,8 @@ def main() -> int:
         point_node[start : start + len(block)] = distance2.argmin(axis=1)
 
     if args.balance == "descriptors":
-        # Вес узла = сколько дескрипторов принадлежит точкам, ближайшим к нему
-        # (без учёта overlap/видимости — это только пропорция для нарезки).
+
+
         desc_weight = np.bincount(point_node[owner], minlength=len(names)).astype(np.float64)
         edges = balanced_edges(desc_weight, args.parts)
         LOGGER.info("границы по дескрипторам: %s", edges.tolist())

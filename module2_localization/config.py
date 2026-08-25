@@ -3,85 +3,66 @@ from pathlib import Path
 _MODULE_ROOT = Path(__file__).resolve().parent
 MAPS_DIR = _MODULE_ROOT / "maps"
 
-# Карта
-ROUTE_CAM = None               # риг-карта: строить эталон только по кадрам этой камеры (напр. "_c2"); None = все
-ROUTE_NODES = None             # обрезать эталон до N первых узлов (None = весь маршрут)
-SHARD_PRELOAD_NODES = 25       # ширина переходной зоны; соседний шард уже находится в памяти (= overlap-nodes шардов)
-SHARD_CONFIRM_FIXES = 2        # уверенных фикса соседнего шарда до атомарного переключения
-SHARD_PRELOAD_ALL = False      # шарды грузятся по одному, заранее — только в зоне нахлёста
-SHARD_FULL_RECOVERY = True     # при LOST продолжать фоново пытаться по полной карте
-                                # (сама полная карта грузится ВСЕГДА — нужна для выбора
-                                # шарда на старте/смене маршрута/reset_shard независимо
-                                # от этого флага; флаг только про постоянные попытки)
-SHARD_RECOVERY_MIN_INLIERS = 35  # полный банк принимаем только при строгом уверенном PnP
+ROUTE_CAM = None
+ROUTE_NODES = None
+SHARD_PRELOAD_NODES = 25
+SHARD_CONFIRM_FIXES = 2
+SHARD_PRELOAD_ALL = False
+SHARD_FULL_RECOVERY = True
 
-# Детектор ALIKED (запрос)
-QUERY_KPTS = 1024               # макс. число ключевых точек на кадре запроса (больше = точнее и медленнее)
-QUERY_DET_THRESHOLD = 0.05     # порог отклика детектора: ниже = больше точек
-QUERY_NMS_RADIUS = 2           # подавление немаксимумов, px: минимальное расстояние между точками
+SHARD_RECOVERY_MIN_INLIERS = 35
 
-# Сопоставление дескрипторов
-MATCH_RATIO = 0.9              # тест Лоу d1/d2: строже (меньше) = меньше ложных пар
-MATCH_TOPK = 8                 # сколько кандидатов банка проверять на точку (для second-best по чужому кадру)
-FOCAL_FALLBACK = 1.2           # догадка фокуса при несовпадении разрешения: F = коэф * max(W,H)
+QUERY_KPTS = 1024
+QUERY_DET_THRESHOLD = 0.05
+QUERY_NMS_RADIUS = 2
 
-# PnP (поза по 3D-2D)
-MAX_ERROR = 12.0               # порог репроекции инлайера RANSAC, px
-MIN_PAIRS = 8                  # меньше пар точек -> кадр не локализуем
-MIN_INLIERS = 20               # меньше инлайеров -> команду считаем ненадёжной (lost)
+MATCH_RATIO = 0.9
+MATCH_TOPK = 8
+FOCAL_FALLBACK = 1.2
 
-# Приём фиксов (антидребезг)
-MOVE_EPS = 0.06                # смещение (ед. карты) за окно истории ниже -> считаем, что стоим на месте
-POSE_HISTORY = 5               # длина окна истории поз C для оценки движения
-MAX_NODES_PER_SEC = 40         # верхний предел роста номера узла в секунду (защита от скачка)
-MIN_NODE_JUMP = 10             # допускаем скачок хотя бы на столько узлов (низкий fps)
-MAX_REJECTS = 5                # столько отказов-скачков подряд -> ошибались мы, принимаем фикс
+MAX_ERROR = 12.0
+MIN_PAIRS = 8
+MIN_INLIERS = 20
 
-# Остановка в конце маршрута
-STOP_CONFIRM = 3               # столько подряд stop-фиксов -> защёлкиваем стоп
-STOP_MIN_INLIERS = 40          # stop засчитывается только при таком числе инлайеров
-STOP_END_NODES = 5             # ближайший узел в этих последних узлах эталона -> команда stop
+MOVE_EPS = 0.06
+POSE_HISTORY = 5
+MAX_NODES_PER_SEC = 40
+MIN_NODE_JUMP = 10
+MAX_REJECTS = 5
 
-# Упреждение по скорости (компенсация задержки инференса — робот успевает на скорости)
-NAV_LAG_S = 0.08               # проверено на улице: умеренная компенсация задержки без сильного забегания вперёд
-NAV_LAG_ADAPTIVE = False       # True -> вместо NAV_LAG_S берём фактическое время текущего кадра (t_ext+t_match+t_pnp)
-NAV_LEAD_MAX = 0.08            # проверенный потолок сдвига, ед. карты; не позволяет упреждению увести с маршрута
-NAV_LEAD_SMOOTH = 7            # проверенное сглаживание скорости для уличного маршрута
-NAV_WIN_NODES = 0           # окно матчинга: ±узлов вокруг последнего; 0 = весь банк (медленно на больших картах)
+STOP_CONFIRM = 3
+STOP_MIN_INLIERS = 40
+STOP_END_NODES = 5
 
-# Руление
-STEER_MODE = "pursuit"         # закон руления: "pursuit" (упреждение) или "stanley"
-LOOKAHEAD_NODES = 10           # проверено на улице: меньше срезает повороты, чем прежние 30 узлов
-LOOKAHEAD_MIN = 4              # минимальное упреждение при заметном отклонении от маршрута
-LOOKAHEAD_ADAPT = 30.0         # сокращение упреждения на ед. бокового смещения (зависит от масштаба карты)
-# Скоростная адаптация упреждения: узлы = speed_pwm / LOOKAHEAD_SPEED_DIV, калибровано в
-# поле (85 PWM -> 5 узлов, 255 PWM -> 15 узлов, легло на прямую через ноль). Пока нет
-# сообщений от мозга (ai.nats_speed_topic) — базовое упреждение остаётся LOOKAHEAD_NODES.
+NAV_LAG_S = 0.08
+NAV_LAG_ADAPTIVE = False
+NAV_LEAD_MAX = 0.08
+NAV_LEAD_SMOOTH = 7
+NAV_WIN_NODES = 0
+
+STEER_MODE = "pursuit"
+LOOKAHEAD_NODES = 10
+LOOKAHEAD_MIN = 4
+LOOKAHEAD_ADAPT = 30.0
+
 LOOKAHEAD_SPEED_DIV = 17.0
-LOOKAHEAD_MAX = 20.0           # потолок узлов упреждения (страховка от экстраполяции выше калибровки)
-NATS_SPEED_TOPIC = "ai.nats_speed_topic"  # скорость робота (PWM) от мозга
-DEADZONE_DEG = 4.0             # |азимут| меньше -> команда straight
-STANLEY_K = 1.0                # усиление поперечного члена Стэнли (per ед. карты)
-HEADING_GATE = 0.3             # ближайший узел ищем только среди сонаправленных: cos(курс,эталон) > этого
+LOOKAHEAD_MAX = 20.0
+NATS_SPEED_TOPIC = "ai.nats_speed_topic"
+DEADZONE_DEG = 5.5
+STANLEY_K = 1.0
+HEADING_GATE = 0.3
 
-# Камера
-CAMERA = "0"                   # источник камеры: индекс или GStreamer-строка
-CAMERA_BACK = True             # камера смотрит НАЗАД по ходу движения (инвертируем курс и эталон)
-CAM_SHM_SOCKET = "/tmp/cam_raw"  # сокет ветки fan-out GStreamer, откуда берём кадры
-CAM_WIDTH = 1280               # ширина кадра из сокета
-CAM_HEIGHT = 720               # высота кадра из сокета
-CAM_FPS = 30                   # частота кадров из сокета
+CAMERA = "0"
+CAMERA_BACK = True
+CAM_SHM_SOCKET = "/tmp/cam_raw"
+CAM_WIDTH = 1280
+CAM_HEIGHT = 720
+CAM_FPS = 30
 
-# Двухкамерная навигация
-NAV_MODE = "dual"             # по умолчанию ведёт front; rear включается как резерв после потерь
-FRONT_CAM_BACK = False        # передняя смотрит ВПЕРЁД
-REAR_CAM_BACK = True          # задняя смотрит НАЗАД
+NAV_MODE = "dual"
+FRONT_CAM_BACK = False
+REAR_CAM_BACK = True
 
-# Маршруты — карты жёстко зашиты здесь, ручной выбор карты в админке отключён.
-# camera: какая камера ведёт маршрут по умолчанию ("front" -> режим dual с фронтом
-# первым, "rear" -> режим rear). front_map/rear_map: None -> для этого маршрута
-# камера не используется вообще (не грузится, даже лениво).
-# Папки карт унифицированы: maps/<маршрут>/<камера>_full и .../<камера>_shard/NN_of_MM.
 ROUTES = {
     "1-2": {"label": "Маршрут 1-2", "camera": "front",
             "front_map": "1-2/front_shard/01_of_25", "rear_map": None},
@@ -94,189 +75,186 @@ ROUTES = {
     "office": {"label": "Маршрут офис", "camera": "front",
                "front_map": "office/front", "rear_map": "office/rear"},
 }
-DEFAULT_ROUTE = "1-2"         # с каким маршрутом стартует демон по умолчанию; см. --route
-FRONT_MAP = ROUTES["1-2"]["front_map"]   # для инструментов вне daemon-потока (viz.py и т.п.)
+
+DEFAULT_ROUTE = "1-2"
+FRONT_MAP = ROUTES["1-2"]["front_map"]
 REAR_MAP = ROUTES["2"]["rear_map"]
 DEFAULT_MAP = REAR_MAP
-FRONT_SHM_SOCKET = "/tmp/cam_front_raw"  # AI-сокет передней (CSI IMX219), I420 1280x720
-REAR_SHM_SOCKET = "/tmp/cam_raw"         # AI-сокет задней (USB C920), I420 1280x720
-DUAL_LOST_HOLD = 3            # столько подряд потерь фронта -> активной становится задняя
-DUAL_BACK_HOLD = 5            # столько подряд удачных фронт-фиксов -> возвращаемся на переднюю
+FRONT_SHM_SOCKET = "/tmp/cam_front_raw"
+REAR_SHM_SOCKET = "/tmp/cam_raw"
+DUAL_LOST_HOLD = 3
+DUAL_BACK_HOLD = 5
 
-# Светофор (модуль 1) — детекция ВСЕГДА на кадре ПЕРЕДНЕЙ камеры (светофоры впереди),
-# но включается только в ЗОНЕ. Зону выбирает АКТИВНАЯ навигационная камера (DualNav):
-# ведёт фронт -> зона фронт-карты; фронт потерян, ведёт зад -> зона зад-карты.
-TRAFFIC_LIGHT_ENABLED = True   # гонять детекцию+классификацию светофора
-# Диапазоны задаются в ГЛОБАЛЬНЫХ узлах исходной полной карты. Для shard-карт
-# service добавляет global_node из shard.json. Отсутствие карты в словаре означает:
-# светофорная ветка на ней выключена, а не активна на всём маршруте.
+TRAFFIC_LIGHT_ENABLED = True
+
+ROUTE_2_TRAFFIC_ZONE = (410, 430)
+ROUTE_12_TRAFFIC_ZONE = (877, 886)
+ROUTE_21_TRAFFIC_ZONE = (714, 718)
+ROUTE_31_TRAFFIC_ZONE = (897, 901)
 TRAFFIC_ZONES = {
-    # Маршрут 2 (зад): навигационные image/node 410..430.
-    "2/rear_full": (410, 430),
-    "2/rear_shard/01_of_10": (410, 430),
-    "2/rear_shard/02_of_10": (410, 430),
-    "2/rear_shard/03_of_10": (410, 430),
-    "2/rear_shard/04_of_10": (410, 430),
-    "2/rear_shard/05_of_10": (410, 430),
-    "2/rear_shard/06_of_10": (410, 430),
-    "2/rear_shard/07_of_10": (410, 430),
-    "2/rear_shard/08_of_10": (410, 430),
-    "2/rear_shard/09_of_10": (410, 430),
-    "2/rear_shard/10_of_10": (410, 430),
-    # Маршрут 1 (фронт): сдвинуто ближе к светофору (было 869..879), чтобы робот
-    # не останавливался слишком заранее — небезопаснее по краю, но короче стоп.
-    "1-2/front_full": (877, 886),
-    "1-2/front_shard/01_of_25": (877, 886),
-    "1-2/front_shard/02_of_25": (877, 886),
-    "1-2/front_shard/03_of_25": (877, 886),
-    "1-2/front_shard/04_of_25": (877, 886),
-    "1-2/front_shard/05_of_25": (877, 886),
-    "1-2/front_shard/06_of_25": (877, 886),
-    "1-2/front_shard/07_of_25": (877, 886),
-    "1-2/front_shard/08_of_25": (877, 886),
-    "1-2/front_shard/09_of_25": (877, 886),
-    "1-2/front_shard/10_of_25": (877, 886),
-    "1-2/front_shard/11_of_25": (877, 886),
-    "1-2/front_shard/12_of_25": (877, 886),
-    "1-2/front_shard/13_of_25": (877, 886),
-    "1-2/front_shard/14_of_25": (877, 886),
-    "1-2/front_shard/15_of_25": (877, 886),
-    "1-2/front_shard/16_of_25": (877, 886),
-    "1-2/front_shard/17_of_25": (877, 886),
-    "1-2/front_shard/18_of_25": (877, 886),
-    "1-2/front_shard/19_of_25": (877, 886),
-    "1-2/front_shard/20_of_25": (877, 886),
-    "1-2/front_shard/21_of_25": (877, 886),
-    "1-2/front_shard/22_of_25": (877, 886),
-    "1-2/front_shard/23_of_25": (877, 886),
-    "1-2/front_shard/24_of_25": (877, 886),
-    "1-2/front_shard/25_of_25": (877, 886),
-    # Маршрут 2-1 (фронт): навигационные узлы 714..718.
-    "2-1/front_full": (714, 718),
-    "2-1/front_shard/01_of_25": (714, 718),
-    "2-1/front_shard/02_of_25": (714, 718),
-    "2-1/front_shard/03_of_25": (714, 718),
-    "2-1/front_shard/04_of_25": (714, 718),
-    "2-1/front_shard/05_of_25": (714, 718),
-    "2-1/front_shard/06_of_25": (714, 718),
-    "2-1/front_shard/07_of_25": (714, 718),
-    "2-1/front_shard/08_of_25": (714, 718),
-    "2-1/front_shard/09_of_25": (714, 718),
-    "2-1/front_shard/10_of_25": (714, 718),
-    "2-1/front_shard/11_of_25": (714, 718),
-    "2-1/front_shard/12_of_25": (714, 718),
-    "2-1/front_shard/13_of_25": (714, 718),
-    "2-1/front_shard/14_of_25": (714, 718),
-    "2-1/front_shard/15_of_25": (714, 718),
-    "2-1/front_shard/16_of_25": (714, 718),
-    "2-1/front_shard/17_of_25": (714, 718),
-    "2-1/front_shard/18_of_25": (714, 718),
-    "2-1/front_shard/19_of_25": (714, 718),
-    "2-1/front_shard/20_of_25": (714, 718),
-    "2-1/front_shard/21_of_25": (714, 718),
-    "2-1/front_shard/22_of_25": (714, 718),
-    "2-1/front_shard/23_of_25": (714, 718),
-    "2-1/front_shard/24_of_25": (714, 718),
-    "2-1/front_shard/25_of_25": (714, 718),
-    # Маршрут 3-1 (фронт): навигационные узлы 897..901.
-    "3-1/front_full": (897, 901),
-    "3-1/front_shard/01_of_25": (897, 901),
-    "3-1/front_shard/02_of_25": (897, 901),
-    "3-1/front_shard/03_of_25": (897, 901),
-    "3-1/front_shard/04_of_25": (897, 901),
-    "3-1/front_shard/05_of_25": (897, 901),
-    "3-1/front_shard/06_of_25": (897, 901),
-    "3-1/front_shard/07_of_25": (897, 901),
-    "3-1/front_shard/08_of_25": (897, 901),
-    "3-1/front_shard/09_of_25": (897, 901),
-    "3-1/front_shard/10_of_25": (897, 901),
-    "3-1/front_shard/11_of_25": (897, 901),
-    "3-1/front_shard/12_of_25": (897, 901),
-    "3-1/front_shard/13_of_25": (897, 901),
-    "3-1/front_shard/14_of_25": (897, 901),
-    "3-1/front_shard/15_of_25": (897, 901),
-    "3-1/front_shard/16_of_25": (897, 901),
-    "3-1/front_shard/17_of_25": (897, 901),
-    "3-1/front_shard/18_of_25": (897, 901),
-    "3-1/front_shard/19_of_25": (897, 901),
-    "3-1/front_shard/20_of_25": (897, 901),
-    "3-1/front_shard/21_of_25": (897, 901),
-    "3-1/front_shard/22_of_25": (897, 901),
-    "3-1/front_shard/23_of_25": (897, 901),
-    "3-1/front_shard/24_of_25": (897, 901),
-    "3-1/front_shard/25_of_25": (897, 901),
-    # TODO: маршрут офис — узлы зоны светофора неизвестны (если там вообще есть
-    # светофор); добавить сюда "office/front": (start, stop), когда будет известно.
-}
-TRAFFIC_DET_CONF = 0.15        # порог детектора светофора (ниже дефолтных 0.25 — ловит дальше)
 
-# Направление движения (перед/зад) — экспериментально, поэтому за флагом как светофор.
-# Зоны заднего хода зашиты руками (не пересчитываются на каждом старте демона):
-# посчитаны один раз по dot-product курса эталона и проверены визуально по траектории.
-# Диапазоны в ГЛОБАЛЬНЫХ узлах исходной полной карты, как и TRAFFIC_ZONES.
-DIRECTION_ENABLED = True      # выдавать поле direction в командах (forward/backward)
+    "2/rear_full": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/01_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/02_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/03_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/04_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/05_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/06_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/07_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/08_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/09_of_10": ROUTE_2_TRAFFIC_ZONE,
+    "2/rear_shard/10_of_10": ROUTE_2_TRAFFIC_ZONE,
+
+
+    "1-2/front_full": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/01_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/02_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/03_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/04_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/05_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/06_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/07_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/08_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/09_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/10_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/11_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/12_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/13_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/14_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/15_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/16_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/17_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/18_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/19_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/20_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/21_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/22_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/23_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/24_of_25": ROUTE_12_TRAFFIC_ZONE,
+    "1-2/front_shard/25_of_25": ROUTE_12_TRAFFIC_ZONE,
+
+    "2-1/front_full": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/01_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/02_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/03_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/04_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/05_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/06_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/07_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/08_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/09_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/10_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/11_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/12_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/13_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/14_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/15_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/16_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/17_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/18_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/19_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/20_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/21_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/22_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/23_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/24_of_25": ROUTE_21_TRAFFIC_ZONE,
+    "2-1/front_shard/25_of_25": ROUTE_21_TRAFFIC_ZONE,
+
+    "3-1/front_full": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/01_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/02_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/03_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/04_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/05_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/06_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/07_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/08_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/09_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/10_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/11_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/12_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/13_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/14_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/15_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/16_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/17_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/18_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/19_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/20_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/21_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/22_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/23_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/24_of_25": ROUTE_31_TRAFFIC_ZONE,
+    "3-1/front_shard/25_of_25": ROUTE_31_TRAFFIC_ZONE,
+
+
+}
+TRAFFIC_DET_CONF = 0.15
+
+DIRECTION_ENABLED = True
+ROUTE_21_BACKWARD_ZONES = [(0, 26), (1596, 1632)]
+ROUTE_31_BACKWARD_ZONES = [(0, 28), (1776, 1813)]
 BACKWARD_ZONES = {
-    # Маршрут 2-1 (фронт): разворот назад в начале (0..26) и в конце (1596..1632).
-    "2-1/front_full": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/01_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/02_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/03_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/04_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/05_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/06_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/07_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/08_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/09_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/10_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/11_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/12_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/13_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/14_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/15_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/16_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/17_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/18_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/19_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/20_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/21_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/22_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/23_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/24_of_25": [(0, 26), (1596, 1632)],
-    "2-1/front_shard/25_of_25": [(0, 26), (1596, 1632)],
-    # Маршрут 3-1 (фронт): разворот назад в начале (0..28) и в конце (1776..1813).
-    # Заканчивается в том же месте, что 2-1 (похожая шпилька, похожая длина в узлах),
-    # но начинается в другом месте — своя шпилька в начале, не совпадает с 2-1.
-    "3-1/front_full": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/01_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/02_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/03_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/04_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/05_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/06_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/07_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/08_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/09_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/10_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/11_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/12_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/13_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/14_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/15_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/16_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/17_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/18_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/19_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/20_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/21_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/22_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/23_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/24_of_25": [(0, 28), (1776, 1813)],
-    "3-1/front_shard/25_of_25": [(0, 28), (1776, 1813)],
+
+    "2-1/front_full": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/01_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/02_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/03_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/04_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/05_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/06_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/07_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/08_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/09_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/10_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/11_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/12_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/13_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/14_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/15_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/16_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/17_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/18_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/19_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/20_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/21_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/22_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/23_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/24_of_25": ROUTE_21_BACKWARD_ZONES,
+    "2-1/front_shard/25_of_25": ROUTE_21_BACKWARD_ZONES,
+
+
+
+    "3-1/front_full": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/01_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/02_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/03_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/04_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/05_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/06_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/07_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/08_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/09_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/10_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/11_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/12_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/13_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/14_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/15_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/16_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/17_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/18_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/19_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/20_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/21_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/22_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/23_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/24_of_25": ROUTE_31_BACKWARD_ZONES,
+    "3-1/front_shard/25_of_25": ROUTE_31_BACKWARD_ZONES,
 }
 
-# NATS
-NATS_HOST = "192.168.40.48"     # хост NATS (для внешних подписчиков, напр. viz) 37.9.240.194
-NATS_URL = "nats://127.0.0.1:4222"  # адрес подключения демона
-NATS_TOPIC = "robot.vision.localization"  # топик публикации команд
-NATS_CONTROL_TOPIC = "robot.vision.control"  # топик команд управления от админки (pause/resume/reset/set_map)
-NATS_TRAFFIC_TOPIC = "robot.vision.traffic_light"  # топик сигналов светофора
+NATS_HOST = "192.168.40.48"
+NATS_URL = "nats://127.0.0.1:4222"
+NATS_TOPIC = "robot.vision.localization"
+NATS_CONTROL_TOPIC = "robot.vision.control"
+NATS_TRAFFIC_TOPIC = "robot.vision.traffic_light"

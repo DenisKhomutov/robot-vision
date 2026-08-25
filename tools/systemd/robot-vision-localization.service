@@ -1,12 +1,6 @@
-# Установка:
-#   sudo cp tools/systemd/*.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now robot-vision-localization
-#   journalctl -u robot-vision-localization -f
 
 [Unit]
 Description=Robot vision: localization daemon (shm -> NATS)
-# камера должна отдавать кадры раньше, чем мы к ним подключимся
 After=network.target camera-fanout.service
 Requires=camera-fanout.service
 

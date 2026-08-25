@@ -13,8 +13,6 @@ services:
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-    # host-сеть: демон публикует в локальный NATS, viz оператора цепляется снаружи по IP.
-    # ipc + /tmp: shmsrc забирает кадры из разделяемой памяти fan-out-сервиса.
     network_mode: host
     ipc: host
     volumes:

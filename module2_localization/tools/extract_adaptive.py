@@ -69,7 +69,7 @@ def main() -> int:
             return 2
         args.min_gap = args.fixed_gap
         args.max_gap = args.fixed_gap
-        # В фиксированном режиме порог shift не должен вызывать раннее сохранение.
+
         args.shift = 1_000_000.0
 
     if args.min_gap < 1 or args.max_gap < args.min_gap:
@@ -142,8 +142,8 @@ def main() -> int:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         d = displacement(anchor, gray, pts)
         if d is not None and d < min_move and gap >= args.max_gap:
-            # Якорь сохраняем: медленное движение должно накопиться, а не исчезнуть
-            # из-за периодического сброса каждые max-gap кадров.
+
+
             continue
         if d is None or d >= shift or gap >= args.max_gap:
             if not cv2.imwrite(str(out / f"{idx:06d}.jpg"), frame, [cv2.IMWRITE_JPEG_QUALITY, 95]):

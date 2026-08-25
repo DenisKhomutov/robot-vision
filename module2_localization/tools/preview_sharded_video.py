@@ -1,6 +1,6 @@
 """Render a real sharded-localization run with map, commands and traffic state."""
 
-# ruff: noqa: E501, T201
+
 
 from __future__ import annotations
 
@@ -90,8 +90,8 @@ def main() -> int:
         back_facing = "rear" in args.map.lower()
     print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
     localizer = build_runtime_localizer(args.map, back_facing)
-    # Шард больше не выбирается автоматически при создании (только по кнопке
-    # «СБРОС ШАРДА» в админке) — здесь кнопки нет, дёргаем то же самое напрямую.
+
+
     relocate = getattr(localizer, "force_relocate", None)
     if relocate is not None:
         relocate()
@@ -194,9 +194,9 @@ def main() -> int:
                     traffic_signal = detection.get("signal") or "none"
                     traffic_label += f" / {traffic_signal}"
                     box = detection.get("box")
-                    # Рамку рисуем только когда tl_frame это и есть render-кадр
-                    # (без отдельного --video-front) — иначе рамка попала бы на
-                    # кадр камеры, которая не выводится в этом видео.
+
+
+
                     if box is not None and front_capture is None:
                         x1, y1, x2, y2 = (int(v) for v in box)
                         bc = box_color(traffic_signal)

@@ -1,6 +1,6 @@
 """Browser dashboard for localization status and NATS controls on Jetson."""
 
-# ruff: noqa: E501
+
 
 from __future__ import annotations
 
@@ -184,7 +184,6 @@ const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
 const $=s=>document.querySelector(s);
 
 function fullMapName(){
-  // Единая карта маршрута — запись без shard, чья папка начинается с "<route>/".
   let route=status.route;
   if(!route)return null;
   let hit=catalog.find(m=>!m.shard&&m.name.startsWith(route+'/'));
@@ -284,7 +283,6 @@ async function tick(){
     $('#btnDirOn').classList.toggle('active',!!status.direction_enabled);
     $('#btnDirOff').classList.toggle('active',!status.direction_enabled);
 
-    // Смена режима/карты/маршрута разрешена только на паузе — как на сервере.
     document.querySelectorAll('.gated').forEach(el=>el.disabled=!paused);
 
     draw();
@@ -330,8 +328,8 @@ def map_payload(name: str, cloud_limit: int = 12_000) -> dict[str, object]:
 
 def map_catalog() -> list[dict[str, object]]:
     result = []
-    # Карты лежат вложенно: maps/<маршрут>/<камера>_full или .../<камера>_shard/NN_of_MM.
-    # "Имя карты" везде в коде — путь относительно MAPS_DIR (со слэшами), не просто basename.
+
+
     for runtime_file in sorted(config.MAPS_DIR.rglob("runtime.npz")):
         path = runtime_file.parent
         if not (path / "aliked_bank.npz").exists():

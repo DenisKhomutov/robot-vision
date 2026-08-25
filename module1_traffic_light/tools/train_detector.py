@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from module1_traffic_light import config  # noqa: E402
+from module1_traffic_light import config
 
 
 def main():

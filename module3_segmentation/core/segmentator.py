@@ -31,14 +31,14 @@ class Segmentator:
         confs = r.boxes.conf.tolist()
         polys = r.masks.xy
 
-        # полигоны масок в чистый python-тип (для рендера и mypy/ruff)
+
         poly_points: list[list[tuple[float, float]]] = [[(float(x), float(y)) for x, y in poly] for poly in polys]
         class_names = [str(names[int(c)]) for c in classes]
         conf_values = [float(c) for c in confs]
 
         self._save_visualization(img, class_names, conf_values, poly_points)
 
-        # в ответ — только проезжая зона: класс + уверенность
+
         return [
             {"class": cn, "confidence": round(cv, 4)}
             for cn, cv in zip(class_names, conf_values, strict=True)

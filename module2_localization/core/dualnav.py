@@ -7,16 +7,16 @@ class DualNav:
         self.front, self.rear, self.cfg = front_loc, rear_loc, cfg
         self.pf, self.pr = Pilot(cfg), Pilot(cfg)
         self.mode = getattr(cfg, "NAV_MODE", "rear")
-        self.active = "front"         # какая камера сейчас ведёт (в dual): старт с фронта
+        self.active = "front"
         self.front_lost = self.front_good = 0
         self.front_map = front_map
         self.rear_map = rear_map
         self.front_node_offset = self._node_offset(self.front_map)
         self.rear_node_offset = self._node_offset(self.rear_map)
         self.route = route or getattr(cfg, "DEFAULT_ROUTE", "1")
-        # Какому маршруту принадлежит карта на каждой камере — используется для
-        # _maps_compatible(), чтобы не проверять по имени файла карты (имена
-        # произвольные, напр. office-карты "office/front"/"office/rear").
+
+
+
         self.front_route = front_route if front_loc is not None else None
         self.rear_route = rear_route if rear_loc is not None else None
 
@@ -125,9 +125,9 @@ class DualNav:
         if mode not in ("rear", "dual", "front"):
             return False
         if mode in ("dual", "front") and self.front is None:
-            return False               # нет передней карты/источника
+            return False
         if mode == "rear" and self.rear is None:
-            return False               # нет задней карты/источника
+            return False
         self.mode = mode
         self.active = "rear" if mode == "rear" else "front"
         self.front_lost = self.front_good = 0
@@ -137,8 +137,8 @@ class DualNav:
         if self.front is None:
             return {"move_type": "stop", "reason": "нет карты передней камеры", "cam": "front"}
         if self.pf.paused:
-            # На паузе НЕ гоняем locate() — иначе дорогой recovery-поиск по полной
-            # карте продолжает молотить впустую, просто результат выбрасывается.
+
+
             cmd = self.pf.step(None)
             return self._map_fields(cmd, "front", self.front_map, self.front_node_offset)
         result = self.front.locate(ff)
@@ -216,12 +216,12 @@ class DualNav:
                 cmd["full_map_recovery"] = True
                 cmd["recovery_map"] = front_recovery_map
         elif not self._maps_compatible():
-            # Нельзя локализовать кадр одного маршрута по карте другого: при
-            # потере front безопасно останавливаемся, пока оператор не выберет
-            # совместимую rear-карту (тот же маршрут).
+
+
+
             cmd = {"move_type": "stop", "cam": "front", "map": self.front_map,
                    "reason": "front/rear maps belong to different routes", "map_mismatch": True}
-        else:                          # ленивый резерв: заднюю гоняем только когда ведёт она
+        else:
             cmd = self._rear(rear_frame)
         cmd["mode"] = "dual"
         cmd["route"] = self.route

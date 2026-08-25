@@ -169,7 +169,7 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
             localizer = await asyncio.to_thread(build_runtime_localizer, map_name, back_facing, full_recovery)
             nav.set_localizer(camera, localizer, map_name, route=route)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"[control] не удалось загрузить карту {camera}: {exc}", flush=True)
             return False
         return True
@@ -212,9 +212,9 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
                 if not map_name:
                     print(f"[control] у маршрута {nav.route} нет карты для {camera}", flush=True)
                     return
-                # _ensure_camera сам ничего не грузит повторно, если карта уже
-                # та самая — важно не пропускать проверку через has_camera(),
-                # иначе можно оставить камеру с картой СТАРОГО маршрута.
+
+
+
                 if not await _ensure_camera(camera, map_name, nav.route):
                     return
             if not nav.set_mode(mode):
@@ -282,9 +282,9 @@ class TrafficBranch:
         self._analyze = analyze
         self.zones = getattr(cfg, "TRAFFIC_ZONES", {})
         self.last_map, self.last_node = None, None
-        # машина состояний в зоне: WAIT_RED (стоим, ждём красный, зелёный игнорим) ->
-        # WAIT_GREEN (видели красный, стоим, ждём зелёный) -> GO (защёлка до reset;
-        # детектор больше не запускается). Так робот не остановится уже на дороге.
+
+
+
         self.state = "WAIT_RED"
         self.completed = False
 
@@ -302,7 +302,7 @@ class TrafficBranch:
         if map_name != self.last_map:
             self.last_node = None
             self.last_map = map_name
-        if node is not None:                       # запоминаем последнюю известную позу
+        if node is not None:
             self.last_node = node
         node = node if node is not None else self.last_node
         zone = self.zones.get(map_name)
@@ -315,7 +315,7 @@ class TrafficBranch:
     def update(self, in_zone, frame_bgr):
         """WAIT_RED ignores green; RED arms WAIT_GREEN; next GREEN latches GO."""
         if self.completed:
-            return None                            # до reset больше никогда не анализируем
+            return None
         if not in_zone:
             self.state = "WAIT_RED"
             return None
@@ -406,10 +406,13 @@ class DirectionController:
         node = cmd.get("global_node", cmd.get("node"))
         backward = bool(ranges and node is not None and any(a <= node <= b for a, b in ranges))
         cmd["direction"] = "backward" if backward else "forward"
-        # камера физически смотрит вперёд; при заднем ходе истинное направление
-        # движения противоположно тому, куда смотрит камера — поворот азимута
-        # на 180° (== пересчёт через -fwd, эквивалентно по atan2) даёт угол
-        # относительно РЕАЛЬНОГО хода, а не оптики.
+
+
+
+
+
+
+
         if backward and cmd.get("deg") is not None and cmd.get("move_type") not in ("stop", "lost"):
             deg = ((cmd["deg"] + 180.0 + 180.0) % 360.0) - 180.0
             cmd["deg"] = deg
@@ -422,16 +425,16 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic, full_recovery, direction))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
-        stamp, rframe = rear_src.latest()               # ведём цикл по задней (всегда есть)
+        stamp, rframe = rear_src.latest()
         fframe = front_src.latest()[1] if front_src else None
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
             cmd = nav.step(fframe, rframe)
             if direction is not None:
                 direction.process(cmd)
-            # светофор: детекция на переднем кадре. Решение ПОЛНОСТЬЮ здесь, мозгу
-            # отдельно ничего не шлём — только перебиваем команду навигации на stop,
-            # пока машина состояний не разрешит ехать (state GO).
+
+
+
             if traffic and fframe is not None:
                 tl = traffic.process(cmd, fframe)
                 if tl is not None:
@@ -475,10 +478,10 @@ async def main() -> int:
     route = args.route or config.DEFAULT_ROUTE
     route_spec = config.ROUTES[route]
 
-    # dual (фронт-локализатор) — только явно: флаг --dual или NAV_MODE=dual (нужна ГОТОВАЯ фронт-карта)
+
     dual = args.dual or config.NAV_MODE == "dual"
 
-    # ── ЗАДНИЙ источник (навигация)
+
     rear_video = args.video_rear or args.video
     if rear_video:
         rear_src = VideoFileSource(rear_video, step=args.source_step)
@@ -489,15 +492,15 @@ async def main() -> int:
     else:
         rear_src = CameraSource(args.camera or config.CAMERA)
 
-    # ── локализаторы
+
     recovery = False if args.no_recovery else None
     front_loc = None
     rear_loc = None
     front_map = route_spec.get("front_map")
     rear_map = route_spec.get("rear_map")
-    # Явный --mode ограничивает, что грузить (для CLI/видео-тестов одной камеры).
-    # Без --mode грузим то, что задаёт camera маршрута: "front" -> дуал с фронтом
-    # первым (зад лениво через админку), "rear" -> только зад.
+
+
+
     default_mode = route_spec.get("camera", "front")
     want_front = front_map is not None and (args.mode in ("dual", "front") if args.mode else default_mode != "rear")
     want_rear = rear_map is not None and (args.mode in ("dual", "rear") if args.mode else default_mode == "rear")
@@ -509,7 +512,7 @@ async def main() -> int:
     else:
         rear_loc = get_localizer()
 
-    # ── ПЕРЕДНИЙ источник: для dual-навигации И/ИЛИ для светофора (карта фронта не нужна)
+
     front_src = None
     if dual or getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
         try:
@@ -517,7 +520,7 @@ async def main() -> int:
                 front_src = VideoFileSource(args.video_front, step=args.source_step)
             else:
                 front_src = _shm(config.FRONT_SHM_SOCKET)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"[перёд] нет передней камеры ({e})", flush=True)
             if dual:
                 return 1
@@ -528,7 +531,7 @@ async def main() -> int:
     if args.mode:
         nav.set_mode(args.mode)
     elif front_loc is not None and rear_loc is None:
-        nav.set_mode("front")          # вторая карта маршрута ещё не загружена — стартуем одной камерой
+        nav.set_mode("front")
     elif rear_loc is not None and front_loc is None:
         nav.set_mode("rear")
     print(f"[nav] маршрут {route}, режим {nav.mode}" + ("  (dual доступен)" if front_loc and rear_map else ""),
@@ -543,8 +546,8 @@ async def main() -> int:
         if getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
             await traffic.set_enabled(True)
         else:
-            # Модель уже в памяти, даже если детекция сейчас выключена —
-            # включение потом (админка) мгновенное, без задержки загрузки.
+
+
             await traffic.preload()
         print(f"[TL] runtime-переключатель готов; старт={'ON' if traffic.enabled else 'OFF'}", flush=True)
 

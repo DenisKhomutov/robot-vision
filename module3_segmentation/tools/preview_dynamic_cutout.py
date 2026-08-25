@@ -65,8 +65,8 @@ def main():
         pct = 100 * (mask > 0).mean()
 
         if build:
-            # пишем МАСКУ (255=выкинуть точки), не трогая кадр: чёрная заливка дала бы
-            # ложные точки на кромке. build_map по маске отбрасывает keypoints.
+
+
             cv2.imwrite(str(out / f"{p.stem}.png"), mask)
             if (picks.index(p) + 1) % 100 == 0:
                 print(f"  {picks.index(p) + 1}/{len(picks)}", flush=True)

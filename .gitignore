@@ -24,10 +24,8 @@ weights/
 .DS_Store
 Thumbs.db
 
-# веса моделей (крупные бинарники) — не в git; при нужде Releases/LFS
 *.pt
 
-# yolo_train: тяжёлые артефакты (веса, данные, видео, выводы)
 yolo_train/weights/
 yolo_train/data/
 yolo_train/exp/
@@ -38,13 +36,11 @@ yolo_train/_data_resolved.yaml
 runs/
 pred_val/
 
-# experiment: склонированный сторонний репо + сгенерированные картинки
 experiment/reloc3r/
 experiment/results/
 experiment/results_*/
 experiment/images/
 
-# experiment: сгенерированные панели — регенерируются скриптами
 experiment/edge_out/
 experiment/edge_out_*/
 experiment/edge_out*(Copy)*/
@@ -53,11 +49,9 @@ experiment/ade_classes_out/
 experiment/ade_test/
 experiment/pose_out/
 
-# 3D_VPR_exp: нарезанные кадры, карты, выводы
 3D_VPR_exp/data/
 3D_VPR_exp/maps/
 3D_VPR_exp/out/
 
-# module2_localization: сгенерированные превью-видео/диагностика (тяжёлые файлы)
 module2_localization/out/
 out/

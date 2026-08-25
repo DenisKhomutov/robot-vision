@@ -54,10 +54,10 @@ class ShardedLocalizer:
         self._preload_started: float | None = None
         self._force_recovery = False
         self._recovery = None
-        # full_recovery управляет ТОЛЬКО постоянными попытками при LOST в фоне
-        # (locate()). Саму полную карту грузим всегда, если она есть — она нужна
-        # для разового выбора шарда на старте/смене маршрута/reset_shard даже
-        # с --no-recovery.
+
+
+
+
         self._lost_recovery_enabled = bool(full_recovery)
         self._recovery_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-recovery")
         self._recovery_future: Future | None = None
@@ -74,9 +74,9 @@ class ShardedLocalizer:
         self._recovery = factory(self.recovery_map, back_facing)
         LOGGER.info("полная recovery-карта %s загружена за %.2fс", self.recovery_map,
                     time.monotonic() - started)
-        # Полную карту НЕ гоняем автоматически при создании — только по явной
-        # команде оператора (force_relocate(), дёргает кнопка «СБРОС ШАРДА» в
-        # админке). До этого locate() просто отдаёт lost, ничего не трогая.
+
+
+
         if preload_all:
             started = time.monotonic()
             for i, item in enumerate(self.shards):
@@ -137,7 +137,7 @@ class ShardedLocalizer:
                 self._loaded[int(self._pending_index)] = self._pending
                 elapsed = 0.0 if self._preload_started is None else time.monotonic() - self._preload_started
                 LOGGER.info("предзагружен шард %s за %.2fс", self.shards[int(self._pending_index)]["map"], elapsed)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 LOGGER.error("не удалось предзагрузить шард: %s", exc)
                 self._future = None
                 self._pending_index = None
@@ -147,19 +147,23 @@ class ShardedLocalizer:
         item = self.shards[self.index]
         core_stop = int(item["core_global_stop_exclusive"])
         self._last_global_node = global_node
-        # Маршруты проекта направлены A->B. Нельзя выводить направление цепочки
-        # из одного шумного PnP-скачка: это уже запускало загрузку старого шарда.
-        if global_node >= core_stop - self.preload_nodes:
+
+
+        preload_start = int(item.get("preload_global_start", core_stop - self.preload_nodes))
+        if global_node >= preload_start:
             self._start_preload(self.index + 1)
 
     def _switch_due(self, global_node: int) -> bool:
         item = self.shards[self.index]
         if self._pending_index is None:
             return False
-        # Переходим внутри физического перекрытия, как только соседняя карта дала
-        # confirm_fixes согласованных фикса. Ожидание core-границы оставляло робота
-        # на деградирующем старом банке и создавало LOST прямо перед переключением.
-        transition_start = int(item["core_global_stop_exclusive"]) - self.preload_nodes
+
+
+
+        transition_start = int(item.get(
+            "switch_global_start",
+            int(item["core_global_stop_exclusive"]) - self.preload_nodes,
+        ))
         return self._pending_index > self.index and global_node >= transition_start
 
     def _decorate(self, result: dict, switched: bool = False) -> dict:
@@ -202,7 +206,7 @@ class ShardedLocalizer:
         future, self._recovery_future = self._recovery_future, None
         try:
             return self._apply_recovery(future.result())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             LOGGER.error("фоновый recovery упал: %s", exc)
             return None
 
@@ -215,8 +219,8 @@ class ShardedLocalizer:
         global_node = int(global_node)
         target = self._index_for_global_node(global_node)
         if target not in self._loaded:
-            # Обычно недостижимо при preload_all, но recovery не должен зависеть
-            # от этой настройки.
+
+
             name = str(self.shards[target]["map"])
             self._loaded[target] = self.factory(name, self.back_facing)
         switched = target != self.index
@@ -230,9 +234,9 @@ class ShardedLocalizer:
         self._pending_good = 0
         self._preload_started = None
         self._last_global_node = global_node
-        # Pilot работает с локальными node текущего шарда. Геометрическая команда
-        # полной и shard-карты находится в одной системе координат, поэтому
-        # переводим только индексы маршрута.
+
+
+
         recovered = dict(recovered)
         recovered["node"] = global_node - self.node_offset
         if recovered.get("target_node") is not None:
@@ -262,10 +266,10 @@ class ShardedLocalizer:
         result = self.current.locate(frame)
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
         if not current_good and self._lost_recovery_enabled:
-            # Не блокируем кадр на тяжёлый поиск по полной карте — запускаем/держим
-            # его в фоне и параллельно продолжаем штатно проверять свой шард каждый
-            # кадр (он же ниже, через self.current.locate). Берём фоновый результат,
-            # как только он готов, а не раньше.
+
+
+
+
             self._start_recovery_async(frame)
             recovered = self._collect_recovery_async()
             if recovered is not None:

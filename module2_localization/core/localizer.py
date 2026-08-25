@@ -30,26 +30,26 @@ class AlikedLocalizer:
         self.steer = steer
         self.route_cam = route_cam
         self.back_facing = back_facing
-        self.match_ratio = match_ratio      # тест Лоу d1/d2 для отсева ложных пар
-        self.match_topk = match_topk        # кандидатов банка на точку
-        self.focal_fallback = focal_fallback  # догадка фокуса при несовпадении разрешения
-        self.min_pairs = min_pairs          # меньше пар -> кадр не локализуем
+        self.match_ratio = match_ratio
+        self.match_topk = match_topk
+        self.focal_fallback = focal_fallback
+        self.min_pairs = min_pairs
         self.pnp_confidence = pnp_confidence
         self.pnp_iters = pnp_iters
-        self.lookahead = lookahead          # -> command() через getattr
+        self.lookahead = lookahead
         self.lookahead_min = lookahead_min
         self.lookahead_adapt = lookahead_adapt
-        self.lookahead_speed_div = lookahead_speed_div  # узлы = speed_pwm / этот коэф. (None = выкл)
+        self.lookahead_speed_div = lookahead_speed_div
         self.lookahead_max = lookahead_max
         self.deadzone = deadzone
         self.stanley_k = stanley_k
         self.heading_gate = heading_gate
         self.stop_end_nodes = stop_end_nodes
-        self.lag_s = lag_s              # упреждение: время задержки инференс+доставка, с
-        self.lag_adaptive = lag_adaptive  # брать фактическое время кадра вместо lag_s
-        self.lead_max = lead_max        # потолок сдвига упреждения, ед.карты (страховка от скачка v)
-        self._lead_hist = deque(maxlen=lead_smooth)  # (C, t) для оценки скорости
-        self.win_nodes = win_nodes                   # окно матчинга ±узлов; 0 = весь банк
+        self.lag_s = lag_s
+        self.lag_adaptive = lag_adaptive
+        self.lead_max = lead_max
+        self._lead_hist = deque(maxlen=lead_smooth)
+        self.win_nodes = win_nodes
         self.dev = device or ("cuda" if torch.cuda.is_available() else "cpu")
         work = ROOT / "maps" / map_name
         m = np.load(work / "runtime.npz")
@@ -73,7 +73,7 @@ class AlikedLocalizer:
         self.mxyz = bank["xyz"]
         if "align" in m:
             self.mxyz = self.mxyz @ m["align"].T
-        self._bank_owner = bank["owner"]             # дескриптор -> индекс точки
+        self._bank_owner = bank["owner"]
 
         pos_by_name = dict(zip(m["names"].tolist(), m["pos"]))
         fwd_by_name = dict(zip(m["names"].tolist(), m["fwd"]))
@@ -105,20 +105,20 @@ class AlikedLocalizer:
         seg = np.linalg.norm(np.diff(self.route, axis=0), axis=1)
         self.route_cum = np.concatenate([[0.0], np.cumsum(seg)])
         self.node_step = float(np.median(seg)) if len(seg) else 1.0
-        # окно по УЗЛАМ: для каждого дескриптора — ближайший узел маршрута (точка -> node).
+
         route = self.route.astype(np.float32)
         pt_node = np.empty(len(self.mxyz), np.int64)
-        for i in range(0, len(self.mxyz), 20000):    # чанками, чтобы не раздуть память
+        for i in range(0, len(self.mxyz), 20000):
             seg_pts = self.mxyz[i:i + 20000].astype(np.float32)
             d2 = ((seg_pts[:, None, :] - route[None, :, :]) ** 2).sum(2)
             pt_node[i:i + 20000] = d2.argmin(1)
         self._desc_node = torch.from_numpy(pt_node[self._bank_owner]).to(self.dev)
-        self._last_node = None                       # последний узел (для окна)
+        self._last_node = None
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
 
     def _lead(self, C, fwd, frame_ms):
-        # скорость по окну истории поз (ед.карты/с), сглаженная -> без дрожи PnP
+
         now = time.perf_counter()
         self._lead_hist.append((np.asarray(C, float), now))
         if len(self._lead_hist) < 2:
@@ -127,9 +127,9 @@ class AlikedLocalizer:
         dt = now - t0
         if dt < 1e-3:
             return C
-        v = float(np.linalg.norm(C - C0)) / dt          # ед.карты/с
+        v = float(np.linalg.norm(C - C0)) / dt
         lag = (frame_ms / 1000.0) if self.lag_adaptive else self.lag_s
-        lead = min(v * lag, self.lead_max)              # потолок против скачка скорости
+        lead = min(v * lag, self.lead_max)
         f = fwd / (np.linalg.norm(fwd) + 1e-9)
         return np.asarray(C, float) + lead * f
 
@@ -157,8 +157,8 @@ class AlikedLocalizer:
         best = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
         bown = torch.full((n,), -1, dtype=torch.long, device=self.dev)
         second = torch.full((n,), neg, device=self.dev, dtype=torch.float16)
-        # окно по УЗЛАМ: есть прошлый узел -> матчим только дескрипторы узлов [node±win_nodes];
-        # нет узла (пауза/старт/потеря) -> весь банк
+
+
         mdesc, owner = self.mdesc, self.owner
         if self._last_node is not None and self.win_nodes > 0:
             lo, hi = self._last_node - self.win_nodes, self._last_node + self.win_nodes
@@ -187,7 +187,7 @@ class AlikedLocalizer:
 
         p2d, p3d = qk[keep], self.mxyz[own_cpu[keep]]
         if len(p2d) < self.min_pairs:
-            self._last_node = None                   # потеря -> следующий кадр по всему банку
+            self._last_node = None
             return {"ok": False, "reason": f"мало пар: {len(p2d)}",
                     "t_ext": t_ext, "t_match": t_match}
 
@@ -215,7 +215,7 @@ class AlikedLocalizer:
                                               p2d[idx].astype(np.float64), K, dist, rvec, tvec)
         t_pnp = (time.perf_counter() - t0) * 1000
         if not ok or inl is None or len(inl) < 6:
-            self._last_node = None                   # потеря -> следующий кадр по всему банку
+            self._last_node = None
             return {"ok": False, "reason": "PnP не сошёлся", "n_pairs": len(p2d),
                     "inliers": 0 if inl is None else len(inl),
                     "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
@@ -226,13 +226,13 @@ class AlikedLocalizer:
             fwd = -fwd
         out = {"ok": True, "C": C, "fwd": fwd, "inliers": len(inl),
                "n_pairs": len(p2d), "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
-        # упреждение: команду считаем не от текущей позы, а от той, где робот будет
-        # через время задержки (сдвиг = скорость * lag по курсу). Углы НЕ режем — двигаем
-        # только точку старта, цель на эталоне не трогаем.
+
+
+
         C_lead = self._lead(C, fwd, t_ext + t_match + t_pnp)
         out.update(Localizer.command(self, C_lead, fwd, mode=self.steer))
         out["C_lead"] = C_lead
-        self._last_node = out["node"]                # запомнили узел -> следующий кадр по окну
+        self._last_node = out["node"]
         if self.scale:
             out["dist_to_route_m"] = out["dist_to_route"] * self.scale
             out["offset_m"] = out["offset"] * self.scale

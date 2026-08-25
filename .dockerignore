@@ -5,7 +5,6 @@ __pycache__/
 .env
 .env.local
 
-# данные и инструменты разработки: в образ не едут
 data/
 yolo_train/
 module1_traffic_light/
@@ -16,6 +15,5 @@ module2_localization/map_for_office/
 module2_localization/tools/
 module2_localization/viz.py
 
-# из карты рантайму нужны только sparse/0, aliked_bank.npz и scale.json
 module2_localization/maps/**/database.db
 module2_localization/maps/**/pairs.txt

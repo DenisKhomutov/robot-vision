@@ -38,7 +38,7 @@ def regularize(
         rotations.append(np.asarray(pose.rotation.matrix()))
     rotations = np.asarray(rotations)
 
-    # The +Z camera axis is the direction of travel for the front camera.
+
     axes = rotations[:, :, 2]
     smoothed_axes = np.empty_like(axes)
     for index in range(len(axes)):
@@ -51,7 +51,7 @@ def regularize(
         previous_part, previous_frame = _key(images[index - 1])
         part, frame = _key(images[index])
         if part != previous_part:
-            # The videos touch at the same physical pose.
+
             centers[index] = centers[index - 1]
             continue
         frame_gap = max(0, frame - previous_frame)

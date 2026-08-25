@@ -39,7 +39,7 @@ def _rear_samples(reconstruction: pycolmap.Reconstruction, part: int):
             center, rotation = _camera_to_world(image)
             samples.append((frame, center, rotation))
     samples.sort(key=lambda item: item[0])
-    # Slerp requires strictly increasing timestamps.
+
     unique = {}
     for frame, center, rotation in samples:
         unique[frame] = (center, rotation)
@@ -154,7 +154,7 @@ def anchor(
     )
     anchored_ids = {item[2] for item in records}
 
-    # Preserve 2D measurements but remove the invalid old triangulation.
+
     for point3d_id in list(front.point3D_ids()):
         front.delete_point3D(point3d_id)
 

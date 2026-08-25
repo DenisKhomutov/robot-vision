@@ -6,9 +6,9 @@ import cv2
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from module1_traffic_light import init_models  # noqa: E402
-from module1_traffic_light.core.classifier import get_classifier  # noqa: E402
-from module1_traffic_light.core.detector import get_detector  # noqa: E402
+from module1_traffic_light import init_models
+from module1_traffic_light.core.classifier import get_classifier
+from module1_traffic_light.core.detector import get_detector
 
 
 def color_for(label):
@@ -34,7 +34,7 @@ def main():
 
     if args.det_conf is not None:
         from module1_traffic_light import config as tl_config
-        tl_config.DET_CONF = args.det_conf   # детектор читает config.DET_CONF на каждом кадре
+        tl_config.DET_CONF = args.det_conf
         print(f"[детекция] порог DET_CONF = {args.det_conf}", flush=True)
 
     init_models()

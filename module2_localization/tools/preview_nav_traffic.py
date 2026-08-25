@@ -19,14 +19,14 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
-from localizer import AlikedLocalizer  # noqa: E402
-from pilot import Pilot  # noqa: E402
-import config as cfg  # noqa: E402
+from localizer import AlikedLocalizer
+from pilot import Pilot
+import config as cfg
 
 sys.path.insert(0, str(ROOT.parent))
-from module1_traffic_light import init_models  # noqa: E402
-from module1_traffic_light.core.classifier import get_classifier  # noqa: E402
-from module1_traffic_light.core.detector import get_detector  # noqa: E402
+from module1_traffic_light import init_models
+from module1_traffic_light.core.classifier import get_classifier
+from module1_traffic_light.core.detector import get_detector
 
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 MAP = 720
@@ -86,7 +86,7 @@ def main():
                           match_topk=cfg.MATCH_TOPK, focal_fallback=cfg.FOCAL_FALLBACK,
                           min_pairs=cfg.MIN_PAIRS)
     pilot = Pilot(cfg)
-    pilot.resume()          # пилот стартует на паузе (ждёт resume) -> иначе всегда stop
+    pilot.resume()
     import module1_traffic_light as tl
     tl.config.DET_CONF = args.det_conf
     init_models()
@@ -112,7 +112,7 @@ def main():
             r = loc.locate(fr)
             cmd = pilot.step(r)
             last["cmd"] = cmd
-            # светофор на переднем кадре
+
             pil = Image.fromarray(cv2.cvtColor(ff, cv2.COLOR_BGR2RGB))
             boxes = det.detect(pil)
             sig = None
@@ -128,9 +128,9 @@ def main():
             c = last["cmd"] or {}
             if c.get("move_type") not in (None, "lost") and c.get("node") is not None:
                 node = min(max(c["node"], 0), n - 1)
-                cv2.circle(img, tuple(rp[node]), 6, (120, 255, 120), 2)   # узел упреждения (куда целимся)
+                cv2.circle(img, tuple(rp[node]), 6, (120, 255, 120), 2)
                 p = tuple(px([c["pos"][0], c["pos"][1]])[0]) if c.get("pos") else tuple(rp[node])
-                cv2.circle(img, p, 9, (60, 60, 255), -1)                  # РЕАЛЬНАЯ поза робота
+                cv2.circle(img, p, 9, (60, 60, 255), -1)
                 cv2.circle(img, p, 9, (255, 255, 255), 2)
                 mt = c["move_type"].upper()
             else:

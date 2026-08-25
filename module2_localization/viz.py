@@ -64,8 +64,8 @@ async def main():
     args = ap.parse_args()
 
     from .nats_client import NatsClient
-    maps = {"rear": build(args.map)}                 # активная карта выбирается по камере
-    try:                                             # фронт-карту грузим, если есть (dual)
+    maps = {"rear": build(args.map)}
+    try:
         if config.FRONT_MAP != args.map:
             maps["front"] = build(config.FRONT_MAP)
     except Exception as e:
@@ -95,7 +95,7 @@ async def main():
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     while True:
         c = latest["cmd"] or {}
-        canvas, rp, px, n = maps.get(c.get("cam"), maps["rear"])   # карта активной камеры
+        canvas, rp, px, n = maps.get(c.get("cam"), maps["rear"])
         img = canvas.copy()
         mt = c.get("move_type")
 
@@ -131,7 +131,7 @@ async def main():
             cv2.putText(img, "PAUSED", (SIZE - 190, 34), FONT, 0.8, (60, 200, 255), 2, cv2.LINE_AA)
 
         mode = c.get("mode")
-        if mode:                                   # режим + активная камера (dual)
+        if mode:
             camtxt = f"{mode.upper()}" + (f" [{c.get('cam','?')}]" if mode == "dual" else "")
             ccol = (80, 255, 80) if c.get("cam") == "front" else (60, 200, 255)
             cv2.putText(img, camtxt, (SIZE - 260, 74), FONT, 0.7, ccol, 2, cv2.LINE_AA)

@@ -8,8 +8,8 @@ LOOKAHEAD_MIN = 5
 LOOKAHEAD_ADAPT = 8.0
 STOP_END_NODES = 3
 
-# Последний известный speed_pwm (0..255) от мозга через NATS (см. service.py).
-# None -> нет данных ещё -> берём статичный LOOKAHEAD_NODES, как раньше.
+
+
 _speed_pwm = None
 
 

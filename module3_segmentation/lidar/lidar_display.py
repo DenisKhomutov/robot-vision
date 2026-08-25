@@ -9,7 +9,7 @@ import numpy as np
 
 PORT = 9099
 SIZE = 700
-RANGE = 6.5                      
+RANGE = 6.5
 ACCUM = 5
 FONT = cv2.FONT_HERSHEY_SIMPLEX
 
