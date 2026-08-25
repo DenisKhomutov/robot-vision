@@ -13,7 +13,8 @@ class DualNav:
         self.rear_map = rear_map
         self.front_node_offset = self._node_offset(self.front_map)
         self.rear_node_offset = self._node_offset(self.rear_map)
-        self.route = route or getattr(cfg, "DEFAULT_ROUTE", "1")
+        self.route = route
+        self.loading_route = None
 
 
 
@@ -28,7 +29,8 @@ class DualNav:
         if camera == "front" and self.front is None:
             return False
         self.route = route
-        self.mode = "dual" if camera == "front" else "rear"
+        self.loading_route = None
+        self.mode = "front" if camera == "front" else "rear"
         self.active = camera
         self.front_lost = self.front_good = 0
         return True
@@ -173,6 +175,28 @@ class DualNav:
         return self.front_route is None or self.rear_route is None or self.front_route == self.rear_route
 
     def step(self, front_frame, rear_frame):
+        if self.route is None:
+            return {
+                "move_type": "stop",
+                "reason": "route_loading" if self.loading_route else "route_not_selected",
+                "route": None,
+                "requested_route": self.loading_route,
+                "map": None,
+                "mode": "idle",
+                "paused": True,
+            }
+        if self.pf.paused and self.pr.paused:
+            map_name = self.front_map if self.active == "front" else self.rear_map
+            return {
+                "move_type": "stop",
+                "reason": "route_loaded",
+                "route_loaded": True,
+                "route": self.route,
+                "map": map_name,
+                "mode": self.mode,
+                "cam": self.active,
+                "paused": True,
+            }
         if self.mode == "front":
             cmd = self._front_only(front_frame) if front_frame is not None else \
                 {"move_type": "stop", "reason": "нет кадра передней камеры", "cam": "front"}

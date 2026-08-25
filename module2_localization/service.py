@@ -13,7 +13,7 @@ import numpy as np
 from . import config
 from .core.dualnav import DualNav
 from .nats_client import NatsClient
-from .services.localization_service import build_runtime_localizer, get_localizer
+from .services.localization_service import build_runtime_localizer
 
 
 class ShmSource:
@@ -231,13 +231,16 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             if spec is None:
                 print(f"[control] неизвестный маршрут: {route}", flush=True)
                 return
+            nav.loading_route = route
             for camera in ("front", "rear"):
                 map_name = spec.get(f"{camera}_map")
                 if not map_name:
                     continue
                 if not await _ensure_camera(camera, map_name, route):
+                    nav.loading_route = None
                     return
             if not nav.set_route(route):
+                nav.loading_route = None
                 print(f"[control] маршрут {route} недоступен", flush=True)
                 return
             if traffic:
@@ -475,11 +478,11 @@ async def main() -> int:
                          "разово для выбора шарда на старте/смене маршрута/reset_shard")
     args = ap.parse_args()
 
-    route = args.route or config.DEFAULT_ROUTE
-    route_spec = config.ROUTES[route]
+    route = args.route if args.route is not None else config.DEFAULT_ROUTE
+    route_spec = config.ROUTES[route] if route is not None else {}
 
 
-    dual = args.dual or config.NAV_MODE == "dual"
+    dual = args.dual or config.NAV_MODE in ("dual", "front")
 
 
     rear_video = args.video_rear or args.video
@@ -504,13 +507,10 @@ async def main() -> int:
     default_mode = route_spec.get("camera", "front")
     want_front = front_map is not None and (args.mode in ("dual", "front") if args.mode else default_mode != "rear")
     want_rear = rear_map is not None and (args.mode in ("dual", "rear") if args.mode else default_mode == "rear")
-    if dual:
-        if want_front:
-            front_loc = build_runtime_localizer(front_map, config.FRONT_CAM_BACK, full_recovery=recovery)
-        if want_rear:
-            rear_loc = build_runtime_localizer(rear_map, config.REAR_CAM_BACK, full_recovery=recovery)
-    else:
-        rear_loc = get_localizer()
+    if want_front:
+        front_loc = build_runtime_localizer(front_map, config.FRONT_CAM_BACK, full_recovery=recovery)
+    if want_rear:
+        rear_loc = build_runtime_localizer(rear_map, config.REAR_CAM_BACK, full_recovery=recovery)
 
 
     front_src = None
@@ -534,7 +534,7 @@ async def main() -> int:
         nav.set_mode("front")
     elif rear_loc is not None and front_loc is None:
         nav.set_mode("rear")
-    print(f"[nav] маршрут {route}, режим {nav.mode}" + ("  (dual доступен)" if front_loc and rear_map else ""),
+    print(f"[nav] маршрут {route or 'не выбран'}, режим {nav.mode}" + ("  (dual доступен)" if front_loc and rear_map else ""),
           flush=True)
 
     traffic = None

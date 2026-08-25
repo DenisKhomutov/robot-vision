@@ -9,14 +9,9 @@ def to_command(r, min_inliers):
         return {"move_type": "lost", "reason": f"inliers: {(r or {}).get('inliers', 0)}"}
     if r["move_type"] == "stop":
         return {"move_type": "stop", "node": r["node"]}
-    om, dm = r.get("offset_m"), r.get("dist_to_route_m")
     cmd = {
         "move_type": r["move_type"],
         "deg": round(r["bearing_deg"], 2),
-        "offset": round(r["offset"], 4),
-        "dist_to_route": round(r["dist_to_route"], 4),
-        "offset_m": round(om, 3) if om is not None else None,
-        "dist_to_route_m": round(dm, 3) if dm is not None else None,
         "node": r["node"],
         "target_node": r.get("target_node", r["node"]),
         "inliers": r["inliers"],

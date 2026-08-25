@@ -59,7 +59,7 @@ CAM_WIDTH = 1280
 CAM_HEIGHT = 720
 CAM_FPS = 30
 
-NAV_MODE = "dual"
+NAV_MODE = "front"
 FRONT_CAM_BACK = False
 REAR_CAM_BACK = True
 
@@ -76,7 +76,7 @@ ROUTES = {
                "front_map": "office/front", "rear_map": "office/rear"},
 }
 
-DEFAULT_ROUTE = "1-2"
+DEFAULT_ROUTE = None
 FRONT_MAP = ROUTES["1-2"]["front_map"]
 REAR_MAP = ROUTES["2"]["rear_map"]
 DEFAULT_MAP = REAR_MAP

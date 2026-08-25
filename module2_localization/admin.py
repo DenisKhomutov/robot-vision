@@ -226,6 +226,9 @@ async function ensureMap(name){
 function fillRoutes(){
   let sel=$('#routeSelect'),old=sel.value;
   sel.innerHTML='';
+  let empty=document.createElement('option');
+  empty.value='';empty.textContent='— маршрут не выбран —';
+  sel.appendChild(empty);
   for(let key in routes){
     let o=document.createElement('option');
     o.value=key;o.textContent=routes[key];
