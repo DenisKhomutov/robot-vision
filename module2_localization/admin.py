@@ -173,6 +173,7 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
       <h2>Маршрут</h2>
       <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
+      <button class="stop gated" data-cmd="clear_route" style="width:100%;margin-top:8px">СТОЯНКА / ВЫГРУЗИТЬ КАРТУ</button>
     </section>
 
     <p id="message"></p>
@@ -421,7 +422,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "set_traffic", "set_direction"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "clear_route", "set_traffic", "set_direction"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return

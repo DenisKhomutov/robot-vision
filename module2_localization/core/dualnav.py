@@ -35,6 +35,32 @@ class DualNav:
         self.front_lost = self.front_good = 0
         return True
 
+    def clear_route(self):
+        self.pause()
+        seen = set()
+        for localizer in (self.front, self.rear):
+            if localizer is None or id(localizer) in seen:
+                continue
+            seen.add(id(localizer))
+            if hasattr(localizer, "close"):
+                localizer.close()
+        self.front = None
+        self.rear = None
+        self.front_map = None
+        self.rear_map = None
+        self.front_route = None
+        self.rear_route = None
+        self.front_node_offset = 0
+        self.rear_node_offset = 0
+        self.route = None
+        self.loading_route = None
+        self.mode = "idle"
+        self.active = "front"
+        self.front_lost = 0
+        self.front_good = 0
+        self.pf = Pilot(self.cfg)
+        self.pr = Pilot(self.cfg)
+
     def _node_offset(self, map_name):
         if not map_name:
             return 0

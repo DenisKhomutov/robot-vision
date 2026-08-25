@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import gc
 import json
 import os
 import shutil
@@ -231,6 +232,8 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             if spec is None:
                 print(f"[control] неизвестный маршрут: {route}", flush=True)
                 return
+            if nav.route != route:
+                nav.clear_route()
             nav.loading_route = route
             for camera in ("front", "rear"):
                 map_name = spec.get(f"{camera}_map")
@@ -246,6 +249,22 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             if traffic:
                 traffic.reset()
             print(f"[control] маршрут -> {route}", flush=True)
+            return
+        elif cmd == "clear_route":
+            if not (nav.pf.paused and nav.pr.paused):
+                print("[control] clear_route: сначала ПАУЗА", flush=True)
+                return
+            nav.clear_route()
+            if traffic:
+                traffic.reset()
+            gc.collect()
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            print("[control] стоянка: маршрут и карты выгружены", flush=True)
             return
         elif cmd == "set_traffic":
             if traffic is None:
