@@ -100,7 +100,8 @@ class Pilot:
             cmd = {"move_type": "lost", "node": self.last_good["node"],
                    "reason": self.jump or cmd["reason"]}
         if self.stopped:
-            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node")}
+            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
+                   "reason": "route_complete"}
         if self.paused:
             cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"), "paused": True}
         cmd["ts"] = round(time.time(), 3)
