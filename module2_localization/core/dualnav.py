@@ -15,6 +15,7 @@ class DualNav:
         self.rear_node_offset = self._node_offset(self.rear_map)
         self.route = route
         self.loading_route = None
+        self.route_started = False
 
 
 
@@ -30,6 +31,7 @@ class DualNav:
             return False
         self.route = route
         self.loading_route = None
+        self.route_started = False
         self.mode = "front" if camera == "front" else "rear"
         self.active = camera
         self.front_lost = self.front_good = 0
@@ -54,6 +56,7 @@ class DualNav:
         self.rear_node_offset = 0
         self.route = None
         self.loading_route = None
+        self.route_started = False
         self.mode = "idle"
         self.active = "front"
         self.front_lost = 0
@@ -135,6 +138,8 @@ class DualNav:
     def resume(self):
         self.pf.resume()
         self.pr.resume()
+        if self.route is not None:
+            self.route_started = True
 
     def reset_shard(self):
         """Заставить обе камеры заново определиться по полной карте: оператор
@@ -213,16 +218,18 @@ class DualNav:
             }
         if self.pf.paused and self.pr.paused:
             map_name = self.front_map if self.active == "front" else self.rear_map
-            return {
+            cmd = {
                 "move_type": "stop",
-                "reason": "route_loaded",
-                "route_loaded": True,
+                "reason": "operator_paused" if self.route_started else "route_loaded",
                 "route": self.route,
                 "map": map_name,
                 "mode": self.mode,
                 "cam": self.active,
                 "paused": True,
             }
+            if not self.route_started:
+                cmd["route_loaded"] = True
+            return cmd
         if self.mode == "front":
             cmd = self._front_only(front_frame) if front_frame is not None else \
                 {"move_type": "stop", "reason": "нет кадра передней камеры", "cam": "front"}
