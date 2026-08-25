@@ -414,6 +414,7 @@ class DirectionController:
 
     def __init__(self, cfg, enabled=False):
         self.zones = getattr(cfg, "BACKWARD_ZONES", {})
+        self.left_block_zones = getattr(cfg, "BACKWARD_LEFT_BLOCK_ZONES", {})
         self.deadzone = getattr(cfg, "DEADZONE_DEG", 4.0)
         self.enabled = bool(enabled)
 
@@ -439,6 +440,11 @@ class DirectionController:
             deg = ((cmd["deg"] + 180.0 + 180.0) % 360.0) - 180.0
             cmd["deg"] = deg
             cmd["move_type"] = "straight" if abs(deg) < self.deadzone else ("right" if deg > 0 else "left")
+        blocked = self.left_block_zones.get(cmd.get("map"))
+        block_left = bool(blocked and node is not None and any(a <= node <= b for a, b in blocked))
+        if backward and block_left and cmd.get("move_type") == "left":
+            cmd["move_type"] = "straight"
+            cmd["deg"] = 0.0
 
 
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,

@@ -170,6 +170,12 @@ def main() -> int:
                 command["deg"] = deg
                 dz = config.DEADZONE_DEG
                 command["move_type"] = "straight" if abs(deg) < dz else ("right" if deg > 0 else "left")
+            blocked = config.BACKWARD_LEFT_BLOCK_ZONES.get(map_name)
+            block_left = bool(blocked and global_node is not None
+                              and any(a <= global_node <= b for a, b in blocked))
+            if backward and block_left and command.get("move_type") == "left":
+                command["move_type"] = "straight"
+                command["deg"] = 0.0
 
         zone = config.TRAFFIC_ZONES.get(map_name)
         in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]

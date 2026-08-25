@@ -252,6 +252,11 @@ BACKWARD_ZONES = {
     "3-1/front_shard/24_of_25": ROUTE_31_BACKWARD_ZONES,
     "3-1/front_shard/25_of_25": ROUTE_31_BACKWARD_ZONES,
 }
+BACKWARD_LEFT_BLOCK_ZONES = {
+    name: ROUTE_21_BACKWARD_ZONES
+    for name in BACKWARD_ZONES
+    if name.startswith("2-1/")
+}
 
 NATS_HOST = "192.168.40.48"
 NATS_URL = "nats://127.0.0.1:4222"
