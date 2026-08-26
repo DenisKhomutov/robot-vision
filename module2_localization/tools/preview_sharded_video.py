@@ -16,7 +16,7 @@ import numpy as np
 
 from .. import config
 from ..core.pilot import Pilot
-from ..service import DirectionController, TrafficBranch
+from ..service import DirectionController, RouteProfileController, TrafficBranch
 from ..services.localization_service import build_runtime_localizer
 
 MAP_SIZE = 720
@@ -83,13 +83,26 @@ def main() -> int:
                              "детекция всегда на кадре фронта, а не активной навигационной камеры)")
     parser.add_argument("--direction", action=argparse.BooleanOptionalAction, default=False,
                         help="проверка зон заднего хода (config.BACKWARD_ZONES)")
+    parser.add_argument("--terminal-maneuvers", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
+
+    min_shard_index = None
+    max_shard_index = None
+    if not args.terminal_maneuvers and args.map.startswith("2-1/"):
+        if args.map == "2-1/front_shard/01_of_25":
+            args.map = "2-1/front_shard/02_of_25"
+        min_shard_index = config.ROUTE_21_NO_MANEUVERS_MIN_SHARD_INDEX
+        max_shard_index = config.ROUTE_21_NO_MANEUVERS_MAX_SHARD_INDEX
 
     back_facing = args.back_facing
     if back_facing is None:
         back_facing = "rear" in args.map.lower()
     print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
-    localizer = build_runtime_localizer(args.map, back_facing)
+    localizer = build_runtime_localizer(
+        args.map, back_facing,
+        min_shard_index=min_shard_index,
+        max_shard_index=max_shard_index,
+    )
 
 
     relocate = getattr(localizer, "force_relocate", None)
@@ -98,6 +111,7 @@ def main() -> int:
     pilot = Pilot(config)
     pilot.resume()
     direction = DirectionController(config, enabled=args.direction)
+    route_profile = RouteProfileController(config, terminal_maneuvers=args.terminal_maneuvers)
     traffic = None
     traffic_completed = False
     canvas, route_px, px = build_canvas(args.full_map)
@@ -158,6 +172,8 @@ def main() -> int:
         global_node = None if command.get("node") is None else int(command["node"]) + offset
         command["global_node"] = global_node
         command["map"] = map_name
+        command["route"] = "2-1" if args.map.startswith("2-1/") else None
+        route_profile.process(command)
 
         direction_label = "forward"
         if args.direction:
@@ -208,9 +224,11 @@ def main() -> int:
             "recovery_map": result.get("_recovery_map"), "pilot_reject": pilot.jump,
             "elapsed_ms": round(elapsed_ms, 2),
             "command": pre_traffic_move_type, "command_after_traffic": command.get("move_type"),
+            "command_reason": command.get("reason"),
             "deg": command.get("deg"), "target_node": command.get("target_node"),
             "traffic_in_zone": in_zone, "traffic_state": traffic_label, "traffic_signal": traffic_signal,
             "direction": direction_label if args.direction else None,
+            "terminal_maneuvers": command.get("terminal_maneuvers"),
         }, ensure_ascii=False) + "\n")
 
         good = result.get("ok") and pilot.accepted

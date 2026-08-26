@@ -31,6 +31,8 @@ class ShardedLocalizer:
         preload_all: bool = False,
         full_recovery: bool = False,
         recovery_min_inliers: int = 35,
+        min_shard_index: int | None = None,
+        max_shard_index: int | None = None,
     ) -> None:
         self.maps_dir = maps_dir
         self.back_facing = back_facing
@@ -40,7 +42,13 @@ class ShardedLocalizer:
         self.min_inliers = min_inliers
         self.recovery_min_inliers = recovery_min_inliers
         self.shards = self._load_chain(start_map)
+        self.min_shard_index = 0 if min_shard_index is None else int(min_shard_index)
+        self.max_shard_index = len(self.shards) - 1 if max_shard_index is None else int(max_shard_index)
+        if not 0 <= self.min_shard_index <= self.max_shard_index < len(self.shards):
+            raise ValueError("недопустимые границы цепочки шардов")
         self.index = next(i for i, item in enumerate(self.shards) if item["map"] == start_map)
+        if not self.min_shard_index <= self.index <= self.max_shard_index:
+            raise ValueError("стартовый шард находится вне разрешённого диапазона")
         self.current: Localizer | None = None
         self._loaded: dict[int, Localizer] = {}
         self.current_map = start_map
@@ -80,6 +88,8 @@ class ShardedLocalizer:
         if preload_all:
             started = time.monotonic()
             for i, item in enumerate(self.shards):
+                if not self.min_shard_index <= i <= self.max_shard_index:
+                    continue
                 if i not in self._loaded:
                     LOGGER.info("загрузка шарда в память %s", item["map"])
                     self._loaded[i] = factory(str(item["map"]), back_facing)
@@ -96,7 +106,7 @@ class ShardedLocalizer:
         raise RuntimeError(f"для шарда {start_map} не найден manifest")
 
     def _start_preload(self, target: int) -> None:
-        if target < 0 or target >= len(self.shards) or target == self.index:
+        if target < self.min_shard_index or target > self.max_shard_index or target == self.index:
             return
         if self._pending_index == target:
             return
@@ -178,8 +188,8 @@ class ShardedLocalizer:
     def _index_for_global_node(self, global_node: int) -> int:
         for i, item in enumerate(self.shards):
             if global_node < int(item["core_global_stop_exclusive"]):
-                return i
-        return len(self.shards) - 1
+                return min(max(i, self.min_shard_index), self.max_shard_index)
+        return self.max_shard_index
 
     def _recover(self, frame: object) -> dict | None:
         """Синхронный recovery — блокирует вызывающего. Используется только для
@@ -321,6 +331,6 @@ class ShardedLocalizer:
     def preload_status(self) -> dict[str, object]:
         target = None if self._pending_index is None else str(self.shards[self._pending_index]["map"])
         return {"target": target, "ready": self._pending is not None,
-                "loaded": len(self._loaded), "total": len(self.shards),
+                "loaded": len(self._loaded), "total": self.max_shard_index - self.min_shard_index + 1,
                 "recovery_map": self.recovery_map if self._recovery is not None else None,
                 "recovery_calls": self._recovery_calls, "recovery_fixes": self._recovery_fixes}

@@ -107,6 +107,7 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   <span id="mode" class="badge">—</span>
   <span id="traffic" class="badge">светофор off</span>
   <span id="direction" class="badge">направление off</span>
+  <span id="maneuvers" class="badge ok">манёвры вкл</span>
   <span id="recovery" class="badge ok">shard</span>
 </header>
 <main>
@@ -171,6 +172,11 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
     <section class="card">
       <h2>Маршрут</h2>
+      <label class="field">Стартовый и конечный манёвры 2-1</label>
+      <div class="row2" style="margin-bottom:8px">
+        <button class="toggle profile-gated" id="btnManeuversOn" data-cmd="set_terminal_maneuvers" data-enabled="true">ВКЛ</button>
+        <button class="toggle profile-gated" id="btnManeuversOff" data-cmd="set_terminal_maneuvers" data-enabled="false">БЕЗ МАНЁВРОВ</button>
+      </div>
       <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
       <button class="stop gated" data-cmd="clear_route" style="width:100%;margin-top:8px">СТОЯНКА / ВЫГРУЗИТЬ КАРТУ</button>
@@ -262,6 +268,9 @@ async function tick(){
       `направление ${status.direction_enabled?'вкл':'выкл'}${status.direction?' · '+status.direction:''}`,
       status.direction_enabled?'ok':'');
 
+    setBadge($('#maneuvers'),status.terminal_maneuvers===false?'манёвры 2-1 выкл':'манёвры 2-1 вкл',
+      status.terminal_maneuvers===false?'warn':'ok');
+
     $('#mode').textContent=(status.mode||'—')+(status.cam?' · '+status.cam:'');
     $('#mode').className='badge'+(status.map_mismatch?' bad':'');
 
@@ -286,8 +295,11 @@ async function tick(){
     $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
     $('#btnDirOn').classList.toggle('active',!!status.direction_enabled);
     $('#btnDirOff').classList.toggle('active',!status.direction_enabled);
+    $('#btnManeuversOn').classList.toggle('active',status.terminal_maneuvers!==false);
+    $('#btnManeuversOff').classList.toggle('active',status.terminal_maneuvers===false);
 
     document.querySelectorAll('.gated').forEach(el=>el.disabled=!paused);
+    document.querySelectorAll('.profile-gated').forEach(el=>el.disabled=!paused||!!status.route);
 
     draw();
   }catch(e){$('#message').textContent=e}
@@ -422,7 +434,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "clear_route", "set_traffic", "set_direction"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "clear_route", "set_traffic", "set_direction", "set_terminal_maneuvers"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return

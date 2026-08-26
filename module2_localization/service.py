@@ -160,15 +160,25 @@ class VideoFileSource:
         pass
 
 
-def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
+def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, route_profile=None):
     async def _ensure_camera(camera, map_name, route):
         """Догрузить карту камеры под конкретный маршрут, если ещё не та."""
+        min_shard_index = None
+        max_shard_index = None
+        if route == "2-1" and route_profile is not None and not route_profile.terminal_maneuvers:
+            if map_name == "2-1/front_shard/01_of_25":
+                map_name = "2-1/front_shard/02_of_25"
+            min_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MIN_SHARD_INDEX", 1)
+            max_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MAX_SHARD_INDEX", 23)
         if nav.has_camera(camera) and getattr(nav, f"{camera}_map", None) == map_name:
             return True
         print(f"[control] {camera}: загрузка {map_name} (маршрут {route})...", flush=True)
         try:
             back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
-            localizer = await asyncio.to_thread(build_runtime_localizer, map_name, back_facing, full_recovery)
+            localizer = await asyncio.to_thread(
+                build_runtime_localizer, map_name, back_facing, full_recovery,
+                min_shard_index, max_shard_index,
+            )
             nav.set_localizer(camera, localizer, map_name, route=route)
         except Exception as exc:
             print(f"[control] не удалось загрузить карту {camera}: {exc}", flush=True)
@@ -187,6 +197,8 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             nav.resume()
         elif cmd == "reset":
             nav.pf.reset(); nav.pr.reset()
+            if route_profile:
+                route_profile.reset()
             if traffic:
                 traffic.reset()
         elif cmd == "reset_traffic":
@@ -248,6 +260,8 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
                 return
             if traffic:
                 traffic.reset()
+            if route_profile:
+                route_profile.reset()
             print(f"[control] маршрут -> {route}", flush=True)
             return
         elif cmd == "clear_route":
@@ -257,6 +271,8 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             nav.clear_route()
             if traffic:
                 traffic.reset()
+            if route_profile:
+                route_profile.reset()
             gc.collect()
             try:
                 import torch
@@ -281,6 +297,19 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None):
             enabled = bool(c.get("enabled"))
             direction.set_enabled(enabled)
             print(f"[control] расчёт направления -> {'ON' if enabled else 'OFF'}", flush=True)
+            return
+        elif cmd == "set_terminal_maneuvers":
+            if route_profile is None:
+                print("[control] профиль конечных манёвров недоступен", flush=True)
+                return
+            if not (nav.pf.paused and nav.pr.paused):
+                print("[control] set_terminal_maneuvers: сначала ПАУЗА", flush=True)
+                return
+            if nav.route is not None:
+                print("[control] set_terminal_maneuvers: сначала выгрузите маршрут", flush=True)
+                return
+            route_profile.set_terminal_maneuvers(bool(c.get("enabled")))
+            print(f"[control] манёвры начала/конца 2-1 -> {'ON' if route_profile.terminal_maneuvers else 'OFF'}", flush=True)
             return
         else:
             print(f"[control] неизвестная команда: {cmd}", flush=True)
@@ -455,10 +484,52 @@ class DirectionController:
                 cmd["deg"] = 0.0
 
 
+class RouteProfileController:
+    def __init__(self, cfg, terminal_maneuvers=None):
+        if terminal_maneuvers is None:
+            terminal_maneuvers = getattr(cfg, "ROUTE_21_TERMINAL_MANEUVERS_DEFAULT", True)
+        self.cfg = cfg
+        self.terminal_maneuvers = bool(terminal_maneuvers)
+        self.completed = False
+
+    def set_terminal_maneuvers(self, enabled):
+        self.terminal_maneuvers = bool(enabled)
+        self.reset()
+
+    def reset(self):
+        self.completed = False
+
+    def process(self, cmd):
+        cmd["terminal_maneuvers"] = self.terminal_maneuvers
+        if self.terminal_maneuvers or cmd.get("route") != "2-1":
+            return
+        node = cmd.get("global_node")
+        if node is None:
+            if self.completed:
+                cmd["move_type"] = "stop"
+                cmd["deg"] = 0.0
+                cmd["reason"] = "route_complete"
+            return
+        min_node = int(getattr(self.cfg, "ROUTE_21_NO_MANEUVERS_MIN_NODE", 27))
+        stop_node = int(getattr(self.cfg, "ROUTE_21_NO_MANEUVERS_STOP_NODE", 1595))
+        if int(node) < min_node:
+            cmd["move_type"] = "stop"
+            cmd["deg"] = 0.0
+            cmd["reason"] = "outside_route_segment"
+            return
+        if int(node) >= stop_node:
+            self.completed = True
+        if self.completed:
+            cmd["move_type"] = "stop"
+            cmd["deg"] = 0.0
+            cmd["reason"] = "route_complete"
+
+
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,
-                  full_recovery=None, direction=None) -> None:
+                  full_recovery=None, direction=None, route_profile=None) -> None:
     if nc:
-        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(nav, traffic, full_recovery, direction))
+        await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(
+            nav, traffic, full_recovery, direction, route_profile))
     last_stamp = -1
     while not (stop_evt and stop_evt.is_set()):
         stamp, rframe = rear_src.latest()
@@ -466,6 +537,8 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
             cmd = nav.step(fframe, rframe)
+            if route_profile is not None:
+                route_profile.process(cmd)
             if direction is not None:
                 direction.process(cmd)
 
@@ -586,6 +659,8 @@ async def main() -> int:
 
     direction = DirectionController(config, enabled=getattr(config, "DIRECTION_ENABLED", False))
     print(f"[dir] runtime-переключатель готов; старт={'ON' if direction.enabled else 'OFF'}", flush=True)
+    route_profile = RouteProfileController(config)
+    print(f"[route-profile] манёвры начала/конца 2-1={'ON' if route_profile.terminal_maneuvers else 'OFF'}", flush=True)
 
     nc = None
     if not args.no_nats:
@@ -619,7 +694,8 @@ async def main() -> int:
         front_src.start()
     rear_src.start()
     try:
-        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic, recovery, direction)
+        await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic,
+                     recovery, direction, route_profile)
     finally:
         if front_src:
             front_src.stop()
