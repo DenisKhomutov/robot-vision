@@ -137,6 +137,7 @@ class VideoFileSource:
         self._latest = None
         self._stamp = 0
         self._stop = False
+        self.cycle = 0
         self.done = False
 
     def start(self):
@@ -157,6 +158,7 @@ class VideoFileSource:
                     if not self.cap.isOpened():
                         self.done = True
                         return
+                self.cycle += 1
                 idx = 0
                 await asyncio.sleep(0)
                 continue
@@ -545,7 +547,19 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(
             nav, traffic, full_recovery, direction, route_profile))
     last_stamp = -1
+    last_video_cycle = getattr(rear_src, "cycle", None)
     while not (stop_evt and stop_evt.is_set()):
+        video_cycle = getattr(rear_src, "cycle", None)
+        if video_cycle is not None and video_cycle != last_video_cycle:
+            last_video_cycle = video_cycle
+            nav.pf.reset()
+            nav.pr.reset()
+            nav.reset_shard()
+            if traffic is not None:
+                traffic.reset()
+            if route_profile is not None:
+                route_profile.reset()
+            print(f"[video] новый цикл {video_cycle}: состояние маршрута и светофора сброшено", flush=True)
         stamp, rframe = rear_src.latest()
         fframe = front_src.latest()[1] if front_src else None
         if rframe is not None and stamp != last_stamp:
