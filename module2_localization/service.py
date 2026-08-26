@@ -480,8 +480,8 @@ class DirectionController:
         if guard and node is not None and cmd.get("deg") is not None:
             (start, stop), max_deg = guard
             if start <= node <= stop and abs(float(cmd["deg"])) > float(max_deg):
-                cmd["move_type"] = "straight"
-                cmd["deg"] = 0.0
+                cmd["deg"] = float(max_deg) if float(cmd["deg"]) > 0 else -float(max_deg)
+                cmd["move_type"] = "right" if cmd["deg"] > 0 else "left"
 
 
 class RouteProfileController:
