@@ -126,14 +126,17 @@ class CameraSource:
 
 class VideoFileSource:
 
-    def __init__(self, path: str, step: int = 2, fps: float = 30.0):
+    def __init__(self, path: str, step: int = 2, fps: float = 30.0, loop: bool = True):
+        self.path = path
         self.cap = cv2.VideoCapture(path)
         if not self.cap.isOpened():
             raise FileNotFoundError(f"не открывается видео: {path}")
         self.step = step
         self.dt = 1.0 / fps
+        self.loop = bool(loop)
         self._latest = None
         self._stamp = 0
+        self._stop = False
         self.done = False
 
     def start(self):
@@ -141,12 +144,22 @@ class VideoFileSource:
 
     async def _run(self):
         idx = 0
-        while True:
+        while not self._stop:
             ok, frame = self.cap.read()
             if not ok:
-                self.done = True
-                self.cap.release()
-                return
+                if not self.loop:
+                    self.done = True
+                    self.cap.release()
+                    return
+                if not self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0):
+                    self.cap.release()
+                    self.cap = cv2.VideoCapture(self.path)
+                    if not self.cap.isOpened():
+                        self.done = True
+                        return
+                idx = 0
+                await asyncio.sleep(0)
+                continue
             if idx % self.step == 0:
                 self._latest = frame
                 self._stamp += 1
@@ -157,7 +170,8 @@ class VideoFileSource:
         return self._stamp, self._latest
 
     def stop(self):
-        pass
+        self._stop = True
+        self.cap.release()
 
 
 def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, route_profile=None):
@@ -574,6 +588,8 @@ async def main() -> int:
                     help="двухкамерный режим: грузит фронт+зад локализаторы, можно переключать в viz")
     ap.add_argument("--video-front", default=None, help="dual: видео передней (отладка)")
     ap.add_argument("--video-rear", default=None, help="dual: видео задней (отладка)")
+    ap.add_argument("--video-loop", action=argparse.BooleanOptionalAction, default=True,
+                    help="зациклить файловые видеопотоки (по умолчанию включено)")
     ap.add_argument("--mode", default=None, choices=["rear", "dual", "front"], help="стартовый режим (по умолч. из маршрута)")
     ap.add_argument("--route", default=None, choices=list(config.ROUTES),
                     help=f"стартовый маршрут (по умолч. config.DEFAULT_ROUTE={config.DEFAULT_ROUTE!r})")
@@ -593,7 +609,7 @@ async def main() -> int:
 
     rear_video = args.video_rear or args.video
     if rear_video:
-        rear_src = VideoFileSource(rear_video, step=args.source_step)
+        rear_src = VideoFileSource(rear_video, step=args.source_step, loop=args.video_loop)
     elif args.shm:
         rear_src = _shm(args.shm)
     elif dual:
@@ -623,7 +639,7 @@ async def main() -> int:
     if dual or getattr(config, "TRAFFIC_LIGHT_ENABLED", False):
         try:
             if args.video_front:
-                front_src = VideoFileSource(args.video_front, step=args.source_step)
+                front_src = VideoFileSource(args.video_front, step=args.source_step, loop=args.video_loop)
             else:
                 front_src = _shm(config.FRONT_SHM_SOCKET)
         except Exception as e:
