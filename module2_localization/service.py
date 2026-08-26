@@ -640,6 +640,8 @@ async def main() -> int:
         nav.set_mode("front")
     elif rear_loc is not None and front_loc is None:
         nav.set_mode("rear")
+    if route is not None:
+        nav.reset_shard()
     print(f"[nav] маршрут {route or 'не выбран'}, режим {nav.mode}" + ("  (dual доступен)" if front_loc and rear_map else ""),
           flush=True)
 
