@@ -35,6 +35,7 @@ class DualNav:
         self.mode = "front" if camera == "front" else "rear"
         self.active = camera
         self.front_lost = self.front_good = 0
+        self.reset_shard()
         return True
 
     def clear_route(self):

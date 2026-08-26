@@ -16,7 +16,7 @@ import numpy as np
 
 from .. import config
 from ..core.pilot import Pilot
-from ..service import TrafficBranch
+from ..service import DirectionController, TrafficBranch
 from ..services.localization_service import build_runtime_localizer
 
 MAP_SIZE = 720
@@ -97,6 +97,7 @@ def main() -> int:
         relocate()
     pilot = Pilot(config)
     pilot.resume()
+    direction = DirectionController(config, enabled=args.direction)
     traffic = None
     traffic_completed = False
     canvas, route_px, px = build_canvas(args.full_map)
@@ -160,22 +161,8 @@ def main() -> int:
 
         direction_label = "forward"
         if args.direction:
-            ranges = config.BACKWARD_ZONES.get(map_name)
-            backward = bool(ranges and global_node is not None
-                             and any(a <= global_node <= b for a, b in ranges))
-            direction_label = "backward" if backward else "forward"
-            command["direction"] = direction_label
-            if backward and command.get("deg") is not None and command.get("move_type") not in ("stop", "lost"):
-                deg = ((command["deg"] + 180.0 + 180.0) % 360.0) - 180.0
-                command["deg"] = deg
-                dz = config.DEADZONE_DEG
-                command["move_type"] = "straight" if abs(deg) < dz else ("right" if deg > 0 else "left")
-            blocked = config.BACKWARD_LEFT_BLOCK_ZONES.get(map_name)
-            block_left = bool(blocked and global_node is not None
-                              and any(a <= global_node <= b for a, b in blocked))
-            if backward and block_left and command.get("move_type") == "left":
-                command["move_type"] = "straight"
-                command["deg"] = 0.0
+            direction.process(command)
+            direction_label = command.get("direction", "forward")
 
         zone = config.TRAFFIC_ZONES.get(map_name)
         in_zone = zone is not None and global_node is not None and zone[0] <= global_node <= zone[1]
