@@ -46,7 +46,7 @@ def build_localizer(map_name, back_facing):
 
 
 def build_runtime_localizer(map_name, back_facing, full_recovery=None,
-                            min_shard_index=None, max_shard_index=None):
+                            min_shard_index=None, max_shard_index=None, event_sink=None):
     """Build a full-map localizer or an automatically advancing shard chain."""
     shard = config.MAPS_DIR / map_name / "shard.json"
     if not shard.exists():
@@ -67,6 +67,8 @@ def build_runtime_localizer(map_name, back_facing, full_recovery=None,
         recovery_min_inliers=getattr(config, "SHARD_RECOVERY_MIN_INLIERS", 35),
         min_shard_index=min_shard_index,
         max_shard_index=max_shard_index,
+        event_sink=event_sink,
+        switch_policies=getattr(config, "SHARD_SWITCH_POLICIES", {}),
     )
 
 

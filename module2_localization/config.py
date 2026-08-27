@@ -11,6 +11,15 @@ SHARD_PRELOAD_ALL = False
 SHARD_FULL_RECOVERY = True
 
 SHARD_RECOVERY_MIN_INLIERS = 35
+SHARD_SWITCH_POLICIES = {
+    "2-1/front_shard/24_of_25": {
+        "switch_global_start": 1596,
+        "max_progress_step": 4,
+        "confirm_fixes": 3,
+        "min_candidate_inliers": 35,
+        "max_node_disagreement": 6,
+    },
+}
 
 QUERY_KPTS = 1024
 QUERY_DET_THRESHOLD = 0.05

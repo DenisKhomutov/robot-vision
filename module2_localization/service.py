@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import atexit
 import gc
 import json
 import os
@@ -14,6 +15,7 @@ import numpy as np
 from . import config
 from .core.dualnav import DualNav
 from .nats_client import NatsClient
+from .navigation_log import NavigationLog, frame_metrics
 from .services.localization_service import build_runtime_localizer
 
 
@@ -176,7 +178,8 @@ class VideoFileSource:
         self.cap.release()
 
 
-def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, route_profile=None):
+def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, route_profile=None,
+                         navlog=None):
     async def _ensure_camera(camera, map_name, route):
         """Догрузить карту камеры под конкретный маршрут, если ещё не та."""
         min_shard_index = None
@@ -194,6 +197,7 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, 
             localizer = await asyncio.to_thread(
                 build_runtime_localizer, map_name, back_facing, full_recovery,
                 min_shard_index, max_shard_index,
+                navlog.emit if navlog is not None else None,
             )
             nav.set_localizer(camera, localizer, map_name, route=route)
         except Exception as exc:
@@ -207,6 +211,9 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, 
         except json.JSONDecodeError:
             return
         cmd = c.get("cmd")
+        if navlog is not None:
+            navlog.emit("control_received", command=c, route=nav.route, mode=nav.mode,
+                        front_paused=nav.pf.paused, rear_paused=nav.pr.paused)
         if cmd == "pause":
             nav.pause()
         elif cmd == "resume":
@@ -542,10 +549,10 @@ class RouteProfileController:
 
 
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,
-                  full_recovery=None, direction=None, route_profile=None) -> None:
+                  full_recovery=None, direction=None, route_profile=None, navlog=None) -> None:
     if nc:
         await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(
-            nav, traffic, full_recovery, direction, route_profile))
+            nav, traffic, full_recovery, direction, route_profile, navlog))
     last_stamp = -1
     last_video_cycle = getattr(rear_src, "cycle", None)
     while not (stop_evt and stop_evt.is_set()):
@@ -560,26 +567,47 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
             if route_profile is not None:
                 route_profile.reset()
             print(f"[video] новый цикл {video_cycle}: состояние маршрута и светофора сброшено", flush=True)
+            if navlog is not None:
+                navlog.emit("video_cycle_reset", video_cycle=video_cycle, route=nav.route,
+                            mode=nav.mode)
         stamp, rframe = rear_src.latest()
         fframe = front_src.latest()[1] if front_src else None
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
+            if navlog is not None:
+                navlog.emit("frame_received", source_stamp=stamp,
+                            front=frame_metrics(fframe), rear=frame_metrics(rframe),
+                            route=nav.route, mode=nav.mode)
             cmd = nav.step(fframe, rframe)
+            if navlog is not None:
+                navlog.emit("command_after_navigation", source_stamp=stamp, command=dict(cmd))
             if route_profile is not None:
                 route_profile.process(cmd)
+                if navlog is not None:
+                    navlog.emit("command_after_route_profile", source_stamp=stamp,
+                                command=dict(cmd))
             if direction is not None:
                 direction.process(cmd)
+                if navlog is not None:
+                    navlog.emit("command_after_direction", source_stamp=stamp,
+                                command=dict(cmd))
 
 
 
             if traffic and fframe is not None:
                 tl = traffic.process(cmd, fframe)
+                if navlog is not None:
+                    navlog.emit("command_after_traffic", source_stamp=stamp,
+                                command=dict(cmd), detection=tl)
                 if tl is not None:
                     print(f"[TL] {json.dumps(tl, ensure_ascii=False)} state={traffic.state}", flush=True)
             payload = json.dumps(cmd, ensure_ascii=False).encode()
             print(payload.decode(), flush=True)
             if nc:
                 await nc.publish(topic, payload)
+            if navlog is not None:
+                navlog.emit("command_published", source_stamp=stamp, topic=topic,
+                            nats=nc is not None, command=dict(cmd))
             await asyncio.sleep(0)
         elif rear_src.done or (front_src and front_src.done):
             break
@@ -613,6 +641,10 @@ async def main() -> int:
                          "скорости шарда); полная карта всё равно грузится и используется "
                          "разово для выбора шарда на старте/смене маршрута/reset_shard")
     args = ap.parse_args()
+    navlog = NavigationLog()
+    atexit.register(navlog.close)
+    navlog.emit("arguments", arguments=vars(args))
+    print(f"[log] {navlog.path}", flush=True)
 
     route = args.route if args.route is not None else config.DEFAULT_ROUTE
     route_spec = config.ROUTES[route] if route is not None else {}
@@ -644,9 +676,11 @@ async def main() -> int:
     want_front = front_map is not None and (args.mode in ("dual", "front") if args.mode else default_mode != "rear")
     want_rear = rear_map is not None and (args.mode in ("dual", "rear") if args.mode else default_mode == "rear")
     if want_front:
-        front_loc = build_runtime_localizer(front_map, config.FRONT_CAM_BACK, full_recovery=recovery)
+        front_loc = build_runtime_localizer(
+            front_map, config.FRONT_CAM_BACK, full_recovery=recovery, event_sink=navlog.emit)
     if want_rear:
-        rear_loc = build_runtime_localizer(rear_map, config.REAR_CAM_BACK, full_recovery=recovery)
+        rear_loc = build_runtime_localizer(
+            rear_map, config.REAR_CAM_BACK, full_recovery=recovery, event_sink=navlog.emit)
 
 
     front_src = None
@@ -727,13 +761,17 @@ async def main() -> int:
     rear_src.start()
     try:
         await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic,
-                     recovery, direction, route_profile)
+                     recovery, direction, route_profile, navlog)
+    except Exception as exc:
+        navlog.emit("service_failed", error=repr(exc))
+        raise
     finally:
         if front_src:
             front_src.stop()
         rear_src.stop()
         if nc:
             await nc.close()
+        navlog.close()
         print("Cameras Brain остановлен", flush=True)
     return 0
 
