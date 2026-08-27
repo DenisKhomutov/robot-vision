@@ -9,8 +9,10 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Protocol
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 import numpy as np
 
@@ -18,6 +20,8 @@ from . import config
 from .nats_client import NatsClient
 
 LOGGER = logging.getLogger("localization-admin")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_LOGS_DIR = PROJECT_ROOT / "logs"
 
 
 class NatsMessage(Protocol):
@@ -90,6 +94,7 @@ select{
   width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);
   background:var(--panel2);color:var(--text);font-size:.9rem;margin-bottom:8px
 }
+.log-meta{font-size:.78rem;color:var(--muted);margin:2px 0 8px;min-height:1.2em}
 label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
 #message{min-height:1.4em;color:var(--yellow);font-size:.85rem;margin-top:8px}
@@ -180,6 +185,16 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
       <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
       <button class="stop gated" data-cmd="clear_route" style="width:100%;margin-top:8px">СТОЯНКА / ВЫГРУЗИТЬ КАРТУ</button>
+    </section>
+
+    <section class="card">
+      <h2>Журналы навигации</h2>
+      <select id="logSelect"></select>
+      <div id="logMeta" class="log-meta">Загрузка списка…</div>
+      <div class="row2">
+        <button class="ghost" id="refreshLogs">ОБНОВИТЬ</button>
+        <button id="downloadLog" disabled>СКАЧАТЬ</button>
+      </div>
     </section>
 
     <p id="message"></p>
@@ -311,6 +326,44 @@ async function send(body){
   $('#message').textContent=(await r.json()).message;
 }
 
+function formatBytes(value){
+  if(value<1024)return value+' Б';
+  if(value<1024*1024)return (value/1024).toFixed(1)+' КиБ';
+  if(value<1024*1024*1024)return (value/(1024*1024)).toFixed(1)+' МиБ';
+  return (value/(1024*1024*1024)).toFixed(2)+' ГиБ';
+}
+
+function updateLogMeta(){
+  let option=$('#logSelect').selectedOptions[0];
+  $('#downloadLog').disabled=!option||!option.value;
+  $('#logMeta').textContent=option&&option.value
+    ? `${formatBytes(Number(option.dataset.size))} · ${option.dataset.modified}`
+    : 'Журналы пока отсутствуют';
+}
+
+async function loadLogs(){
+  let select=$('#logSelect'),old=select.value;
+  try{
+    let response=await fetch('/api/logs',{cache:'no-store'});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    let payload=await response.json();
+    select.innerHTML='';
+    for(let item of payload.logs){
+      let option=document.createElement('option');
+      option.value=item.name;
+      option.textContent=item.name;
+      option.dataset.size=item.size;
+      option.dataset.modified=item.modified;
+      select.appendChild(option);
+    }
+    if([...select.options].some(option=>option.value===old))select.value=old;
+    updateLogMeta();
+  }catch(error){
+    $('#logMeta').textContent='Ошибка получения журналов: '+error;
+    $('#downloadLog').disabled=true;
+  }
+}
+
 document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
   let body={cmd:b.dataset.cmd};
   if(b.dataset.mode)body.mode=b.dataset.mode;
@@ -318,6 +371,12 @@ document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
   send(body);
 });
 $('#setRoute').onclick=()=>send({cmd:'set_route',route:$('#routeSelect').value});
+$('#logSelect').onchange=updateLogMeta;
+$('#refreshLogs').onclick=loadLogs;
+$('#downloadLog').onclick=()=>{
+  let name=$('#logSelect').value;
+  if(name)window.location.href='/api/logs/download?name='+encodeURIComponent(name);
+};
 document.querySelectorAll('button[data-tab]').forEach(b=>b.onclick=()=>{
   activeTab=b.dataset.tab;
   $('#tabShard').classList.toggle('active',activeTab==='shard');
@@ -327,8 +386,45 @@ document.querySelectorAll('button[data-tab]').forEach(b=>b.onclick=()=>{
 
 fetch('/api/routes').then(r=>r.json()).then(x=>{routes=x.routes;fillRoutes()});
 fetch('/api/maps').then(r=>r.json()).then(x=>{catalog=x.maps});
+loadLogs();
 tick();
 </script></body></html>"""
+
+
+def log_catalog(logs_dir: Path) -> list[dict[str, object]]:
+    if not logs_dir.exists():
+        return []
+    result = []
+    for path in logs_dir.iterdir():
+        if path.is_symlink() or not path.is_file():
+            continue
+        stat = path.stat()
+        result.append({
+            "name": path.name,
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime).astimezone().isoformat(timespec="seconds"),
+            "mtime_ns": stat.st_mtime_ns,
+        })
+    result.sort(key=lambda item: int(item["mtime_ns"]), reverse=True)
+    for item in result:
+        item.pop("mtime_ns")
+    return result
+
+
+def resolve_log(logs_dir: Path, name: str) -> Path | None:
+    if not name or name != Path(name).name:
+        return None
+    candidate = logs_dir / name
+    if candidate.is_symlink():
+        return None
+    try:
+        resolved_root = logs_dir.resolve(strict=True)
+        resolved = candidate.resolve(strict=True)
+    except (FileNotFoundError, OSError):
+        return None
+    if resolved.parent != resolved_root or not resolved.is_file():
+        return None
+    return resolved
 
 
 def map_payload(name: str, cloud_limit: int = 12_000) -> dict[str, object]:
@@ -369,7 +465,9 @@ async def main() -> int:
     parser.add_argument("--bind", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--nats-url", default=config.NATS_URL)
+    parser.add_argument("--logs-dir", type=Path, default=DEFAULT_LOGS_DIR)
     args = parser.parse_args()
+    logs_dir = args.logs_dir.expanduser().resolve()
 
     catalog = map_catalog()
     allowed_maps = {str(item["name"]) for item in catalog}
@@ -398,6 +496,23 @@ async def main() -> int:
         writer.close()
         await writer.wait_closed()
 
+    async def respond_file(writer: asyncio.StreamWriter, path: Path) -> None:
+        size = path.stat().st_size
+        encoded_name = quote(path.name, safe="")
+        writer.write(
+            f"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\n"
+            f"Content-Length: {size}\r\n"
+            f"Content-Disposition: attachment; filename*=UTF-8''{encoded_name}\r\n"
+            "Cache-Control: no-store\r\nConnection: close\r\n\r\n".encode()
+        )
+        await writer.drain()
+        with path.open("rb") as source:
+            while chunk := await asyncio.to_thread(source.read, 1024 * 1024):
+                writer.write(chunk)
+                await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
             header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=3)
@@ -419,6 +534,16 @@ async def main() -> int:
                 routes = {key: str(spec.get("label", key)) for key, spec in config.ROUTES.items()}
                 await respond(writer, "200 OK", json.dumps({"routes": routes}, ensure_ascii=False).encode(),
                               "application/json; charset=utf-8")
+            elif method == "GET" and path == "/api/logs":
+                payload = json.dumps({"logs": log_catalog(logs_dir)}, ensure_ascii=False).encode()
+                await respond(writer, "200 OK", payload, "application/json; charset=utf-8")
+            elif method == "GET" and path == "/api/logs/download":
+                name = parse_qs(urlsplit(target).query).get("name", [""])[0]
+                log_path = resolve_log(logs_dir, name)
+                if log_path is None:
+                    await respond(writer, "404 Not Found", b"unknown log", "text/plain")
+                    return
+                await respond_file(writer, log_path)
             elif method == "GET" and path == "/api/map":
                 name = parse_qs(urlsplit(target).query).get("name", [""])[0]
                 if name not in allowed_maps:
