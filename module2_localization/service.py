@@ -25,7 +25,7 @@ class ShmSource:
         if gst is None:
             raise RuntimeError("gst-launch-1.0 не найден")
         if not os.path.exists(socket_path):
-            raise RuntimeError(f"нет сокета {socket_path}: запущен ли fan-out?")
+            raise RuntimeError(f"нет сокета {socket_path}: fan-out")
         self.w, self.h = width, height
         self.frame_size = width * height * 3
         caps = f"video/x-raw,format=I420,width={width},height={height},framerate={fps}/1"
