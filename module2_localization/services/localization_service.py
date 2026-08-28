@@ -1,7 +1,7 @@
 from .. import config
 from ..core.localizer import AlikedLocalizer
 
-def build_localizer(map_name, back_facing):
+def build_localizer(map_name, back_facing, bank_path=None):
     """Собрать локализатор для конкретной карты и направления камеры (тюнинги — из конфига)."""
     return AlikedLocalizer(
         map_name,
@@ -31,6 +31,7 @@ def build_localizer(map_name, back_facing):
         lead_max=config.NAV_LEAD_MAX,
         lead_smooth=config.NAV_LEAD_SMOOTH,
         win_nodes=getattr(config, "NAV_WIN_NODES", 0),
+        bank_path=bank_path,
     )
 
 

@@ -19,6 +19,21 @@ module2_localization/exp/artifacts/2-1/front_full/
 
 Каталог `artifacts` исключён из Git.
 
+## Дополнение банка новым освещением
+
+Скрипт добавляет только геометрически подтверждённые дескрипторы к уже
+существующим 3D-точкам. Рабочие карты и шарды не перезаписываются.
+
+```bash
+uv run --no-sync python -m module2_localization.exp.augment_descriptor_bank \
+  module2_localization/data/test_neg.mkv \
+  --map 1-2/front_full \
+  --frame-step 20 --max-frames 12
+```
+
+Результат сохраняется в
+`module2_localization/exp/artifacts/1-2/front_full/sunny_bank/`.
+
 ## 1. Компактный банк
 
 Без FAISS, два medoid на 3D-точку:

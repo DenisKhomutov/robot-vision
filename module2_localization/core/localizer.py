@@ -21,7 +21,7 @@ class AlikedLocalizer:
                  lookahead=12, lookahead_min=5, lookahead_adapt=8.0, deadzone=4.0,
                  stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
                  lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0,
-                 lookahead_speed_div=None, lookahead_max=None):
+                 lookahead_speed_div=None, lookahead_max=None, bank_path=None):
         from .hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
@@ -66,7 +66,7 @@ class AlikedLocalizer:
         sf = work / "scale.json"
         self.scale = json.loads(sf.read_text())["scale_m_per_unit"] if sf.exists() else None
 
-        bank = np.load(work / "aliked_bank.npz")
+        bank = np.load(Path(bank_path) if bank_path is not None else work / "aliked_bank.npz")
         self.mdesc = torch.from_numpy(bank["desc"].astype(np.float32)).half().to(self.dev)
         self.owner = torch.from_numpy(bank["owner"].astype(np.int64)).to(self.dev)
         self.mxyz = bank["xyz"]
