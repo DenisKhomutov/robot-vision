@@ -10,8 +10,7 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from route import Localizer
+from .route import Localizer
 
 
 class AlikedLocalizer:
@@ -23,7 +22,7 @@ class AlikedLocalizer:
                  stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
                  lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0,
                  lookahead_speed_div=None, lookahead_max=None):
-        from hub import use_local_weights
+        from .hub import use_local_weights
         from lightglue import ALIKED
         use_local_weights()
         self.max_error = max_error
@@ -133,7 +132,7 @@ class AlikedLocalizer:
         f = fwd / (np.linalg.norm(fwd) + 1e-9)
         return np.asarray(C, float) + lead * f
 
-    def locate(self, path, chunk=None, exif_focal=None):
+    def extract_query(self, path):
         from lightglue.utils import load_image
         t0 = time.perf_counter()
         if isinstance(path, np.ndarray):
@@ -145,9 +144,19 @@ class AlikedLocalizer:
             im = im.half()
         with torch.inference_mode():
             f = self.ext.extract(im)
-        qk = f["keypoints"][0].cpu().numpy()
-        q = f["descriptors"][0].half()
-        t_ext = (time.perf_counter() - t0) * 1000
+        return {
+            "keypoints": f["keypoints"][0].cpu().numpy(),
+            "descriptors": f["descriptors"][0].half(),
+            "height": int(im.shape[-2]),
+            "width": int(im.shape[-1]),
+            "source": None if isinstance(path, np.ndarray) else path,
+            "t_ext": (time.perf_counter() - t0) * 1000,
+        }
+
+    def locate_features(self, query, chunk=None, exif_focal=None):
+        qk = query["keypoints"]
+        q = query["descriptors"]
+        t_ext = float(query.get("t_ext", 0.0))
 
         t0 = time.perf_counter()
         n = len(qk)
@@ -191,7 +200,7 @@ class AlikedLocalizer:
             return {"ok": False, "reason": f"мало пар: {len(p2d)}",
                     "t_ext": t_ext, "t_match": t_match}
 
-        h_img, w_img = im.shape[-2], im.shape[-1]
+        h_img, w_img = query["height"], query["width"]
         K, dist = self.K, self.dist
         if (w_img, h_img) != (self.cam_w, self.cam_h):
             if abs(w_img / h_img - self.cam_w / self.cam_h) < 0.01:
@@ -199,7 +208,8 @@ class AlikedLocalizer:
                 K[0] *= w_img / self.cam_w
                 K[1] *= h_img / self.cam_h
             else:
-                ef = None if isinstance(path, np.ndarray) else Localizer.focal_from_exif(path, w_img)
+                source = query.get("source")
+                ef = None if source is None else Localizer.focal_from_exif(source, w_img)
                 f0 = exif_focal or ef or self.focal_fallback * max(w_img, h_img)
                 K = np.array([[f0, 0, w_img / 2], [0, f0, h_img / 2], [0, 0, 1.0]])
                 dist = np.zeros(4)
@@ -237,6 +247,11 @@ class AlikedLocalizer:
             out["dist_to_route_m"] = out["dist_to_route"] * self.scale
             out["offset_m"] = out["offset"] * self.scale
         return out
+
+    def locate(self, path, chunk=None, exif_focal=None):
+        return self.locate_features(
+            self.extract_query(path), chunk=chunk, exif_focal=exif_focal,
+        )
 
 
 def main():

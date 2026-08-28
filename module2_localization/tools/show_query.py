@@ -6,9 +6,8 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "core"))
-from localizer import AlikedLocalizer
-from route import Localizer
+from module2_localization.core.localizer import AlikedLocalizer
+from module2_localization.core.route import Localizer
 
 
 def main():

@@ -23,7 +23,8 @@ def analyze(image: Image.Image) -> dict[str, Any]:
     box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
     crop = image.crop(box)
     label, conf = get_classifier().classify(crop)
-    _save_crop(crop, label)
+    if config.SAVE_CROPS:
+        _save_crop(crop, label)
 
     if label == config.UNKNOWN_LABEL or conf < config.CLS_CONF:
         return {"status": "light_unclassified", "signal": None, "confidence": round(conf, 4), "box": box}

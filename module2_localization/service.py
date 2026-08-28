@@ -409,12 +409,11 @@ class TrafficBranch:
 class TrafficController:
     """Runtime on/off switch with lazy model loading and no navigation pause."""
 
-    def __init__(self, cfg, enabled=False):
+    def __init__(self, cfg):
         self.cfg = cfg
         self.enabled = False
         self.loading = False
         self.branch = None
-        self.start_enabled = enabled
 
     async def preload(self):
         """Загрузить детектор+классификатор в память заранее, не включая

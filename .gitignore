@@ -54,5 +54,6 @@ experiment/pose_out/
 3D_VPR_exp/out/
 
 module2_localization/out/
+module2_localization/exp/artifacts/
 out/
 logs/

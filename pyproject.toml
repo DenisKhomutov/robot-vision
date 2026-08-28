@@ -13,6 +13,7 @@ dependencies = [
     "pycolmap>=4.1.0",
     "nats-py>=2.6.0",
     "lightglue",
+    "faiss-cpu>=1.15.0",
 ]
 
 [project.optional-dependencies]

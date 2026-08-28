@@ -17,10 +17,9 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
-from localizer import AlikedLocalizer
-from pilot import Pilot
+from module2_localization.core.localizer import AlikedLocalizer
+from module2_localization.core.pilot import Pilot
 import config as cfg
 
 sys.path.insert(0, str(ROOT.parent))

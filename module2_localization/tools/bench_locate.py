@@ -7,15 +7,13 @@ extract/match считаются до PnP и от содержимого сце�
 """
 import argparse
 import sys
-import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "core"))
-from localizer import AlikedLocalizer
+from module2_localization.core.localizer import AlikedLocalizer
 
 
 def main():

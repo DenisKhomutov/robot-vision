@@ -14,6 +14,8 @@ LOGGER = logging.getLogger("sharded-localizer")
 
 class Localizer(Protocol):
     def locate(self, frame: object) -> dict: ...
+    def extract_query(self, frame: object) -> object: ...
+    def locate_features(self, query: object) -> dict: ...
 
 
 class ShardedLocalizer:
@@ -30,7 +32,7 @@ class ShardedLocalizer:
         min_inliers: int = 20,
         preload_all: bool = False,
         full_recovery: bool = False,
-        recovery_min_inliers: int = 35,
+        recovery_min_inliers: int = 20,
         min_shard_index: int | None = None,
         max_shard_index: int | None = None,
         event_sink: Callable[..., None] | None = None,
@@ -270,39 +272,49 @@ class ShardedLocalizer:
                 return min(max(i, self.min_shard_index), self.max_shard_index)
         return self.max_shard_index
 
-    def _recover(self, frame: object) -> dict | None:
-        """Синхронный recovery — блокирует вызывающего. Используется только для
-        разового force_relocate() на resume, где это осознанно допустимо."""
-        if self._recovery is None:
-            return None
-        self._recovery_calls += 1
-        return self._apply_recovery(self._recovery.locate(frame))
-
-    def _start_recovery_async(self, frame: object) -> None:
+    def _start_recovery_async(self, query: object) -> None:
         """Запустить/держать recovery по полной карте в фоновом потоке — не
         блокирует основной цикл, шард продолжает проверяться каждый кадр как
         обычно. Пока прошлый запрос не завершился, новый не запускается."""
         if self._recovery is None:
             return
-        if self._recovery_future is not None and not self._recovery_future.done():
+        if self._recovery_future is not None:
             return
         self._recovery_calls += 1
         self._event("full_recovery_async_started", current_map=self.current_map,
                     current_index=self.index, recovery_call=self._recovery_calls)
-        self._recovery_future = self._recovery_executor.submit(self._recovery.locate, frame)
+        self._recovery_future = self._recovery_executor.submit(
+            self._recovery.locate_features, query,
+        )
 
-    def _collect_recovery_async(self) -> dict | None:
+    def _collect_recovery_async(self) -> tuple[dict | None, dict | None]:
         if self._recovery_future is None or not self._recovery_future.done():
-            return None
+            return None, None
         future, self._recovery_future = self._recovery_future, None
         try:
-            result = future.result()
-            self._event("full_recovery_async_result", result=self._result_summary(result))
-            return self._apply_recovery(result)
+            raw = future.result()
+            self._event("full_recovery_async_result", result=self._result_summary(raw))
+            return self._apply_recovery(raw), raw
         except Exception as exc:
             LOGGER.error("фоновый recovery упал: %s", exc)
             self._event("full_recovery_async_failed", error=repr(exc))
-            return None
+            return None, None
+
+    def _recovery_rejected_result(self, recovered: dict | None) -> dict:
+        recovered = recovered or {}
+        inliers = int(recovered.get("inliers", 0))
+        result = {
+            "ok": False,
+            "inliers": inliers,
+            "reason": recovered.get("reason")
+                      or f"recovery: inliers {inliers}/{self.recovery_min_inliers}",
+        }
+        pairs = recovered.get("n_pairs", recovered.get("pairs"))
+        if pairs is not None:
+            result["n_pairs"] = int(pairs)
+        if recovered.get("node") is not None:
+            result["recovery_candidate_node"] = int(recovered["node"])
+        return result
 
     def _apply_recovery(self, recovered: dict) -> dict | None:
         if not recovered.get("ok") or recovered.get("inliers", 0) < self.recovery_min_inliers:
@@ -357,29 +369,34 @@ class ShardedLocalizer:
 
     def locate(self, frame: object) -> dict:
         if self._force_recovery and self._recovery is not None:
-            recovered = self._recover(frame)
-            self._event("full_recovery_forced_result", result=self._result_summary(recovered))
+            self._recovery_calls += 1
+            extractor = self.current if self.current is not None else self._recovery
+            query = extractor.extract_query(frame)
+            raw = self._recovery.locate_features(query)
+            recovered = self._apply_recovery(raw)
+            self._event("full_recovery_forced_result", result=self._result_summary(raw),
+                        accepted=recovered is not None)
             if recovered is not None:
                 self._force_recovery = False
                 return recovered
-            return {"ok": False, "inliers": 0, "reason": "resume: релокализация по полной карте"}
+            return self._decorate(self._recovery_rejected_result(raw))
         self._force_recovery = False
         if self.current is None:
             return {"ok": False, "inliers": 0, "reason": "шард не выбран — нажмите «СБРОС ШАРДА»"}
-        result = self.current.locate(frame)
+        query = self.current.extract_query(frame)
+        result = self.current.locate_features(query)
         self._event("active_shard_result", current_map=self.current_map,
                     current_index=self.index, node_offset=self.node_offset,
                     result=self._result_summary(result))
         current_good = result.get("ok") and result.get("inliers", 0) >= self.min_inliers
         if not current_good and self._lost_recovery_enabled:
-
-
-
-
-            self._start_recovery_async(frame)
-            recovered = self._collect_recovery_async()
+            recovered, raw_recovery = self._collect_recovery_async()
             if recovered is not None:
                 return recovered
+            self._start_recovery_async(query)
+            if (raw_recovery is not None
+                    and raw_recovery.get("inliers", 0) > result.get("inliers", 0)):
+                return self._decorate(self._recovery_rejected_result(raw_recovery))
         if result.get("ok") and result.get("node") is not None:
             observed_global_node = int(result["node"]) + self.node_offset
             self._update_switch_progress(observed_global_node)
@@ -389,7 +406,7 @@ class ShardedLocalizer:
         global_node = result.get("node")
         global_node = None if global_node is None else int(global_node) + self.node_offset
         if self._pending is not None:
-            candidate = self._pending.locate(frame)
+            candidate = self._pending.locate_features(query)
             policy = self.switch_policies.get(self.current_map, {})
             candidate_min_inliers = int(policy.get("min_candidate_inliers", self.min_inliers))
             max_node_disagreement = int(policy.get("max_node_disagreement", self.preload_nodes))

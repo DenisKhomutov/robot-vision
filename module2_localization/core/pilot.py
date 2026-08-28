@@ -6,7 +6,8 @@ import numpy as np
 
 def to_command(r, min_inliers):
     if not r or not r.get("ok") or r.get("inliers", 0) < min_inliers:
-        return {"move_type": "lost", "reason": f"inliers: {(r or {}).get('inliers', 0)}"}
+        inliers = int((r or {}).get("inliers", 0))
+        return {"move_type": "lost", "reason": f"inliers: {inliers}", "inliers": inliers}
     if r["move_type"] == "stop":
         return {"move_type": "stop", "node": r["node"]}
     cmd = {
@@ -98,7 +99,7 @@ class Pilot:
             self.last_good = cmd
         elif self.last_good:
             cmd = {"move_type": "lost", "node": self.last_good["node"],
-                   "reason": self.jump or cmd["reason"]}
+                   "reason": self.jump or cmd["reason"], "inliers": cmd.get("inliers", 0)}
         if self.stopped:
             cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
                    "reason": "route_complete"}

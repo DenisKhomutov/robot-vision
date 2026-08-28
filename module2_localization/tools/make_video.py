@@ -8,11 +8,10 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "core"))
 sys.path.insert(0, str(ROOT))
-from localizer import AlikedLocalizer
-from pilot import Pilot
-from route import Localizer
+from module2_localization.core.localizer import AlikedLocalizer
+from module2_localization.core.pilot import Pilot
+from module2_localization.core.route import Localizer
 import config as cfg
 
 

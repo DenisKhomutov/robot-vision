@@ -8,6 +8,7 @@ CLASSIFIER_WEIGHTS = str(_WEIGHTS_DIR / "best_cls.pt")
 DET_IMGSZ = 960
 
 CROPS_DIR = Path(__file__).resolve().parent / "data" / "crops"
+SAVE_CROPS = False
 
 DET_CONF = 0.25
 CLS_CONF = 0.75

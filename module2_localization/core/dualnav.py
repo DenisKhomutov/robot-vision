@@ -244,13 +244,6 @@ class DualNav:
             cmd["route"] = self.route
             return cmd
 
-        if self.pf.paused and self.pr.paused:
-            cmd = self.pf.step(None)
-            cmd = self._map_fields(cmd, "front", self.front_map, self.front_node_offset)
-            cmd["mode"] = "dual"
-            cmd["route"] = self.route
-            return cmd
-
         front_result = self.front.locate(front_frame)
         front_recovery = bool(front_result.get("_full_map_recovery"))
         front_recovery_map = front_result.get("_recovery_map")
