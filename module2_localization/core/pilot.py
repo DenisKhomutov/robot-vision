@@ -52,6 +52,23 @@ class Pilot:
         self.stop_hits = 0
         self.rejects = 0
 
+    def diagnostics(self, now=None):
+        now = time.monotonic() if now is None else now
+        return {
+            "paused": bool(self.paused),
+            "accepted": bool(self.accepted),
+            "stopped": bool(self.stopped),
+            "stop_hits": int(self.stop_hits),
+            "moved_once": bool(self.moved_once),
+            "last_node": None if self.last_node is None else int(self.last_node),
+            "last_fix_age_s": None if self.last_fix_t is None else float(max(0.0, now - self.last_fix_t)),
+            "jump_rejection": self.jump,
+            "consecutive_jump_rejects": int(self.rejects),
+            "node_history": [int(value) for value in self.nhist],
+            "position_history": [np.asarray(value).tolist() for value in self.chist],
+            "last_steering": {"move_type": self.last_cmd[0], "bearing_deg": float(self.last_cmd[1])},
+        }
+
     def step(self, r, now=None):
         cfg = self.cfg
         now = time.monotonic() if now is None else now

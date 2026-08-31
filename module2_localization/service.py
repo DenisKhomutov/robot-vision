@@ -580,6 +580,7 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
             cmd = nav.step(fframe, rframe)
             if navlog is not None:
                 navlog.emit("command_after_navigation", source_stamp=stamp, command=dict(cmd))
+                navlog.emit("navigation_state", source_stamp=stamp, state=nav.diagnostics())
             if route_profile is not None:
                 route_profile.process(cmd)
                 if navlog is not None:
@@ -643,6 +644,20 @@ async def main() -> int:
     navlog = NavigationLog()
     atexit.register(navlog.close)
     navlog.emit("arguments", arguments=vars(args))
+    diagnostic_config_names = (
+        "MIN_INLIERS", "SHARD_RECOVERY_MIN_INLIERS", "MIN_PAIRS", "MAX_ERROR",
+        "QUERY_KPTS", "QUERY_DET_THRESHOLD", "QUERY_NMS_RADIUS", "MATCH_RATIO",
+        "MATCH_TOPK", "FOCAL_FALLBACK", "POSE_HISTORY", "MAX_NODES_PER_SEC",
+        "MIN_NODE_JUMP", "MAX_REJECTS", "SHARD_PRELOAD_NODES",
+        "SHARD_CONFIRM_FIXES", "SHARD_FULL_RECOVERY", "SHARD_SWITCH_POLICIES",
+        "LOOKAHEAD_NODES", "LOOKAHEAD_MIN", "LOOKAHEAD_ADAPT",
+        "LOOKAHEAD_SPEED_DIV", "LOOKAHEAD_MAX", "DEADZONE_DEG", "NAV_LAG_S",
+        "NAV_LAG_ADAPTIVE", "NAV_LEAD_MAX", "NAV_WIN_NODES",
+    )
+    navlog.emit(
+        "navigation_config",
+        values={name: getattr(config, name, None) for name in diagnostic_config_names},
+    )
     print(f"[log] {navlog.path}", flush=True)
 
     route = args.route if args.route is not None else config.DEFAULT_ROUTE

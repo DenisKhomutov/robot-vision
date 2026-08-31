@@ -152,6 +152,23 @@ class DualNav:
             if relocate is not None:
                 relocate()
 
+    def diagnostics(self):
+        return {
+            "route": self.route,
+            "loading_route": self.loading_route,
+            "route_started": bool(self.route_started),
+            "mode": self.mode,
+            "active_camera": self.active,
+            "front_map": self.front_map,
+            "rear_map": self.rear_map,
+            "front_node_offset": int(self.front_node_offset),
+            "rear_node_offset": int(self.rear_node_offset),
+            "front_lost_count": int(self.front_lost),
+            "front_good_count": int(self.front_good),
+            "front_pilot": self.pf.diagnostics(),
+            "rear_pilot": self.pr.diagnostics(),
+        }
+
     def has_camera(self, camera):
         return (self.front if camera == "front" else self.rear) is not None
 

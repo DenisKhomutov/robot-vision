@@ -74,6 +74,10 @@ def main() -> int:
     parser.add_argument("--fps", type=float, default=None)
     parser.add_argument("--traffic", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--max-frames", type=int, default=None, help="ограничение для короткой проверки")
+    parser.add_argument("--min-inliers", type=int, default=None,
+                        help="порог только для этого прогона; config.py не изменяется")
+    parser.add_argument("--recovery-min-inliers", type=int, default=None,
+                        help="отдельный порог полной recovery-карты только для этого прогона")
     parser.add_argument("--diagnostics", default=None, help="JSONL с результатом каждого обработанного кадра")
     parser.add_argument("--back-facing", action=argparse.BooleanOptionalAction, default=None,
                         help="камера смотрит НАЗАД по ходу движения; по умолчанию угадывается по имени карты")
@@ -85,6 +89,15 @@ def main() -> int:
                         help="проверка зон заднего хода (config.BACKWARD_ZONES)")
     parser.add_argument("--terminal-maneuvers", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
+
+    if args.min_inliers is not None:
+        if args.min_inliers < 6:
+            parser.error("--min-inliers должен быть не меньше 6")
+        config.MIN_INLIERS = int(args.min_inliers)
+    if args.recovery_min_inliers is not None:
+        if args.recovery_min_inliers < 6:
+            parser.error("--recovery-min-inliers должен быть не меньше 6")
+        config.SHARD_RECOVERY_MIN_INLIERS = int(args.recovery_min_inliers)
 
     min_shard_index = None
     max_shard_index = None
@@ -134,6 +147,18 @@ def main() -> int:
     source_index = processed = fixed = 0
     diagnostics_path = Path(args.diagnostics) if args.diagnostics else output.with_suffix(".jsonl")
     diagnostics = diagnostics_path.open("w", encoding="utf-8")
+    diagnostics.write(json.dumps({
+        "record_type": "run_config",
+        "video": str(args.video),
+        "start_map": args.map,
+        "full_map": args.full_map,
+        "min_inliers": int(config.MIN_INLIERS),
+        "recovery_min_inliers": int(config.SHARD_RECOVERY_MIN_INLIERS),
+        "step": int(args.step),
+        "direction": bool(args.direction),
+        "traffic": bool(args.traffic),
+        "terminal_maneuvers": bool(args.terminal_maneuvers),
+    }, ensure_ascii=False) + "\n")
     started = time.perf_counter()
     timings = []
     active_map = args.map
@@ -215,10 +240,11 @@ def main() -> int:
                                     (x1, max(y1 - 10, 20)), FONT, 0.8, bc, 2, cv2.LINE_AA)
 
         diagnostics.write(json.dumps({
+            "record_type": "frame",
             "processed": processed, "source_frame": source_index, "map": map_name,
             "local_node": command.get("node"), "global_node": global_node,
             "ok": bool(result.get("ok")), "accepted": bool(pilot.accepted),
-            "inliers": result.get("inliers"), "pairs": result.get("pairs"),
+            "inliers": result.get("inliers"), "pairs": result.get("n_pairs", result.get("pairs")),
             "reason": result.get("reason"), "switched": switched,
             "full_map_recovery": bool(result.get("_full_map_recovery")),
             "recovery_map": result.get("_recovery_map"), "pilot_reject": pilot.jump,
@@ -229,6 +255,8 @@ def main() -> int:
             "traffic_in_zone": in_zone, "traffic_state": traffic_label, "traffic_signal": traffic_signal,
             "direction": direction_label if args.direction else None,
             "terminal_maneuvers": command.get("terminal_maneuvers"),
+            "localization_diagnostics": result.get("diagnostics"),
+            "pilot_state": pilot.diagnostics(now=source_index / source_fps),
         }, ensure_ascii=False) + "\n")
 
         good = result.get("ok") and pilot.accepted

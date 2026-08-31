@@ -116,6 +116,65 @@ class AlikedLocalizer:
         print(f"[карта] {len(order)} кадров, {len(self.mxyz)} точек, "
               f"{len(self.owner)} дескрипторов, {self.dev}")
 
+    @staticmethod
+    def _stats(values):
+        values = np.asarray(values, dtype=np.float64).reshape(-1)
+        values = values[np.isfinite(values)]
+        if not len(values):
+            return None
+        return {
+            "min": float(values.min()),
+            "p25": float(np.percentile(values, 25)),
+            "median": float(np.median(values)),
+            "mean": float(values.mean()),
+            "p75": float(np.percentile(values, 75)),
+            "p90": float(np.percentile(values, 90)),
+            "max": float(values.max()),
+            "std": float(values.std()),
+        }
+
+    @staticmethod
+    def _point_coverage(points, width, height, grid_cols=4, grid_rows=3):
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+        if not len(points) or width <= 0 or height <= 0:
+            return None
+        x = np.clip(points[:, 0] / width, 0.0, 1.0)
+        y = np.clip(points[:, 1] / height, 0.0, 1.0)
+        cols = np.minimum((x * grid_cols).astype(np.int64), grid_cols - 1)
+        rows = np.minimum((y * grid_rows).astype(np.int64), grid_rows - 1)
+        occupied = np.unique(rows * grid_cols + cols)
+        x0, x1 = float(x.min()), float(x.max())
+        y0, y1 = float(y.min()), float(y.max())
+        centered = np.column_stack((x - x.mean(), y - y.mean()))
+        covariance = centered.T @ centered / max(len(points), 1)
+        eigenvalues = np.linalg.eigvalsh(covariance)
+        return {
+            "count": int(len(points)),
+            "grid": [grid_cols, grid_rows],
+            "occupied_cells": int(len(occupied)),
+            "occupied_fraction": float(len(occupied) / (grid_cols * grid_rows)),
+            "bbox_norm": [x0, y0, x1, y1],
+            "bbox_area_fraction": float((x1 - x0) * (y1 - y0)),
+            "centroid_norm": [float(x.mean()), float(y.mean())],
+            "spread_eigenvalues": [float(v) for v in eigenvalues],
+        }
+
+    @staticmethod
+    def _points3d_geometry(points):
+        points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+        if not len(points):
+            return None
+        centered = points - points.mean(axis=0)
+        covariance = centered.T @ centered / max(len(points), 1)
+        eigenvalues = np.linalg.eigvalsh(covariance)
+        return {
+            "count": int(len(points)),
+            "bbox_min": points.min(axis=0).tolist(),
+            "bbox_max": points.max(axis=0).tolist(),
+            "centroid": points.mean(axis=0).tolist(),
+            "spread_eigenvalues": [float(v) for v in eigenvalues],
+        }
+
     def _lead(self, C, fwd, frame_ms):
 
         now = time.perf_counter()
@@ -145,6 +204,7 @@ class AlikedLocalizer:
         with torch.inference_mode():
             f = self.ext.extract(im)
         return {
+            "query_token": time.time_ns(),
             "keypoints": f["keypoints"][0].cpu().numpy(),
             "descriptors": f["descriptors"][0].half(),
             "height": int(im.shape[-2]),
@@ -169,11 +229,13 @@ class AlikedLocalizer:
 
 
         mdesc, owner = self.mdesc, self.owner
+        windowed_bank = False
         if self._last_node is not None and self.win_nodes > 0:
             lo, hi = self._last_node - self.win_nodes, self._last_node + self.win_nodes
             near = (self._desc_node >= lo) & (self._desc_node <= hi)
             if int(near.sum()) >= 200:
                 mdesc, owner = self.mdesc[near], self.owner[near]
+                windowed_bank = True
         with torch.inference_mode():
             for i in range(0, len(owner), chunk):
                 sim = q @ mdesc[i:i + chunk].T
@@ -190,29 +252,72 @@ class AlikedLocalizer:
                     best = torch.where(nb, v, best)
         d1 = torch.sqrt((2 - 2 * best.float()).clamp(min=0))
         d2 = torch.sqrt((2 - 2 * second.float()).clamp(min=0))
-        keep = ((d1 / d2.clamp(min=1e-6) < self.match_ratio) & (bown >= 0)).cpu().numpy()
+        ratio = d1 / d2.clamp(min=1e-6)
+        keep = ((ratio < self.match_ratio) & (bown >= 0)).cpu().numpy()
         own_cpu = bown.cpu().numpy()
+        d1_cpu = d1.cpu().numpy()
+        d2_cpu = d2.cpu().numpy()
+        ratio_cpu = ratio.cpu().numpy()
         t_match = (time.perf_counter() - t0) * 1000
 
         p2d, p3d = qk[keep], self.mxyz[own_cpu[keep]]
+        pair_owners = own_cpu[keep]
+        unique_pair_owners = np.unique(pair_owners)
+        diagnostics = {
+            "query_token": int(query.get("query_token", 0)),
+            "query_keypoints": int(n),
+            "bank_descriptors_total": int(len(self.owner)),
+            "bank_descriptors_searched": int(len(owner)),
+            "windowed_bank": bool(windowed_bank),
+            "previous_node": None if self._last_node is None else int(self._last_node),
+            "match_ratio_threshold": float(self.match_ratio),
+            "accepted_pairs": int(len(p2d)),
+            "accepted_pair_fraction": float(len(p2d) / max(n, 1)),
+            "unique_matched_points": int(len(unique_pair_owners)),
+            "duplicate_pair_fraction": float(1.0 - len(unique_pair_owners) / max(len(p2d), 1)),
+            "best_distance": self._stats(d1_cpu[np.isfinite(d1_cpu)]),
+            "second_distance": self._stats(d2_cpu[np.isfinite(d2_cpu)]),
+            "accepted_best_distance": self._stats(d1_cpu[keep]),
+            "accepted_second_distance": self._stats(d2_cpu[keep]),
+            "accepted_ratio": self._stats(ratio_cpu[keep]),
+            "pair_coverage": self._point_coverage(p2d, query["width"], query["height"]),
+            "pair_points3d": self._points3d_geometry(p3d),
+        }
         if len(p2d) < self.min_pairs:
             self._last_node = None
             return {"ok": False, "reason": f"мало пар: {len(p2d)}",
-                    "t_ext": t_ext, "t_match": t_match}
+                    "n_pairs": len(p2d), "inliers": 0,
+                    "diagnostics": diagnostics,
+                    "t_ext": t_ext, "t_match": t_match,
+                    "frame_ms": t_ext + t_match}
 
         h_img, w_img = query["height"], query["width"]
         K, dist = self.K, self.dist
+        intrinsics_source = "map"
         if (w_img, h_img) != (self.cam_w, self.cam_h):
             if abs(w_img / h_img - self.cam_w / self.cam_h) < 0.01:
                 K = K.copy()
                 K[0] *= w_img / self.cam_w
                 K[1] *= h_img / self.cam_h
+                intrinsics_source = "map_scaled"
             else:
                 source = query.get("source")
                 ef = None if source is None else Localizer.focal_from_exif(source, w_img)
                 f0 = exif_focal or ef or self.focal_fallback * max(w_img, h_img)
                 K = np.array([[f0, 0, w_img / 2], [0, f0, h_img / 2], [0, 0, 1.0]])
                 dist = np.zeros(4)
+                intrinsics_source = "fallback"
+        diagnostics["image_size"] = [int(w_img), int(h_img)]
+        diagnostics["map_image_size"] = [int(self.cam_w), int(self.cam_h)]
+        diagnostics["intrinsics_source"] = intrinsics_source
+        diagnostics["K"] = K.tolist()
+        diagnostics["dist"] = np.asarray(dist).reshape(-1).tolist()
+        diagnostics["pnp"] = {
+            "reprojection_threshold_px": float(self.max_error),
+            "confidence": float(self.pnp_confidence),
+            "iterations": int(self.pnp_iters),
+            "method": "EPNP_RANSAC+RefineLM",
+        }
 
         t0 = time.perf_counter()
         ok, rvec, tvec, inl = cv2.solvePnPRansac(
@@ -224,24 +329,68 @@ class AlikedLocalizer:
             rvec, tvec = cv2.solvePnPRefineLM(p3d[idx].astype(np.float64),
                                               p2d[idx].astype(np.float64), K, dist, rvec, tvec)
         t_pnp = (time.perf_counter() - t0) * 1000
+        raw_inliers = 0 if inl is None else int(len(inl))
+        diagnostics["pnp"]["raw_ok"] = bool(ok)
+        diagnostics["pnp"]["raw_inliers"] = raw_inliers
+        diagnostics["pnp"]["raw_inlier_ratio"] = float(raw_inliers / max(len(p2d), 1))
         if not ok or inl is None or len(inl) < 6:
             self._last_node = None
             return {"ok": False, "reason": "PnP не сошёлся", "n_pairs": len(p2d),
                     "inliers": 0 if inl is None else len(inl),
-                    "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
+                    "diagnostics": diagnostics,
+                    "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp,
+                    "frame_ms": t_ext + t_match + t_pnp}
+        idx = inl.ravel()
+        projected, _ = cv2.projectPoints(
+            p3d[idx].astype(np.float64), rvec, tvec, K, dist,
+        )
+        reprojection = np.linalg.norm(projected.reshape(-1, 2) - p2d[idx], axis=1)
+        projected_all, _ = cv2.projectPoints(
+            p3d.astype(np.float64), rvec, tvec, K, dist,
+        )
+        reprojection_all = np.linalg.norm(projected_all.reshape(-1, 2) - p2d, axis=1)
+        depths = (cv2.Rodrigues(rvec)[0] @ p3d[idx].T + tvec).T[:, 2]
+        unique_inlier_owners = np.unique(pair_owners[idx])
+        diagnostics["pnp"].update({
+            "inliers": int(len(idx)),
+            "inlier_ratio": float(len(idx) / max(len(p2d), 1)),
+            "unique_inlier_points": int(len(unique_inlier_owners)),
+            "duplicate_inlier_fraction": float(1.0 - len(unique_inlier_owners) / max(len(idx), 1)),
+            "reprojection_error_px": self._stats(reprojection),
+            "all_pair_reprojection_error_px": self._stats(reprojection_all),
+            "refined_pairs_within_threshold": int(np.count_nonzero(reprojection_all <= self.max_error)),
+            "refined_pair_inlier_ratio": float(np.mean(reprojection_all <= self.max_error)),
+            "positive_depth_fraction": float(np.mean(depths > 0)),
+            "inlier_coverage": self._point_coverage(p2d[idx], w_img, h_img),
+            "inlier_points3d": self._points3d_geometry(p3d[idx]),
+            "rvec": np.asarray(rvec).reshape(-1).tolist(),
+            "tvec": np.asarray(tvec).reshape(-1).tolist(),
+        })
         R, _ = cv2.Rodrigues(rvec)
         C = (-R.T @ tvec).ravel()
         fwd = (R.T @ np.array([[0], [0], [1.0]])).ravel()
         if self.back_facing:
             fwd = -fwd
         out = {"ok": True, "C": C, "fwd": fwd, "inliers": len(inl),
-               "n_pairs": len(p2d), "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp}
+               "n_pairs": len(p2d), "diagnostics": diagnostics,
+               "t_ext": t_ext, "t_match": t_match, "t_pnp": t_pnp,
+               "frame_ms": t_ext + t_match + t_pnp}
 
 
 
         C_lead = self._lead(C, fwd, t_ext + t_match + t_pnp)
         out.update(Localizer.command(self, C_lead, fwd, mode=self.steer))
         out["C_lead"] = C_lead
+        diagnostics["pose"] = {
+            "camera_center": C.tolist(),
+            "forward": fwd.tolist(),
+            "camera_center_lead": np.asarray(C_lead).tolist(),
+            "node": int(out["node"]),
+            "target_node": int(out.get("target_node", out["node"])),
+            "bearing_deg": float(out["bearing_deg"]),
+            "dist_to_route": float(out["dist_to_route"]),
+            "offset": float(out["offset"]),
+        }
         self._last_node = out["node"]
         if self.scale:
             out["dist_to_route_m"] = out["dist_to_route"] * self.scale

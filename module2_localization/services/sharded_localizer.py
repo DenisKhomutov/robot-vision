@@ -134,6 +134,8 @@ class ShardedLocalizer:
             "offset", "dist_to_route_m", "offset_m",
         )
         summary = {key: result.get(key) for key in keys if key in result}
+        if "diagnostics" in result:
+            summary["diagnostics"] = result["diagnostics"]
         for key in ("C", "fwd"):
             value = result.get(key)
             if value is not None:
