@@ -14,6 +14,7 @@ import numpy as np
 
 from . import config
 from .core.dualnav import DualNav
+from .frame_guard import FrameHashGuard
 from .nats_client import NatsClient
 from .navigation_log import NavigationLog, frame_metrics
 from .services.localization_service import build_runtime_localizer
@@ -179,7 +180,7 @@ class VideoFileSource:
 
 
 def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, route_profile=None,
-                         navlog=None):
+                         frame_guard=None, navlog=None):
     async def _ensure_camera(camera, map_name, route):
         """Догрузить карту камеры под конкретный маршрут, если ещё не та."""
         min_shard_index = None
@@ -320,6 +321,14 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, 
             enabled = bool(c.get("enabled"))
             direction.set_enabled(enabled)
             print(f"[control] расчёт направления -> {'ON' if enabled else 'OFF'}", flush=True)
+            return
+        elif cmd == "set_frame_hash":
+            if frame_guard is None:
+                print("[control] проверка хеша недоступна", flush=True)
+                return
+            enabled = bool(c.get("enabled"))
+            frame_guard.set_enabled(enabled)
+            print(f"[control] проверка хеша кадра -> {'ON' if enabled else 'OFF'}", flush=True)
             return
         elif cmd == "set_terminal_maneuvers":
             if route_profile is None:
@@ -548,10 +557,11 @@ class RouteProfileController:
 
 
 async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffic=None,
-                  full_recovery=None, direction=None, route_profile=None, navlog=None) -> None:
+                  full_recovery=None, direction=None, route_profile=None, frame_guard=None,
+                  navlog=None) -> None:
     if nc:
         await nc.subscribe(config.NATS_CONTROL_TOPIC, make_control_handler(
-            nav, traffic, full_recovery, direction, route_profile, navlog))
+            nav, traffic, full_recovery, direction, route_profile, frame_guard, navlog))
     last_stamp = -1
     last_video_cycle = getattr(rear_src, "cycle", None)
     while not (stop_evt and stop_evt.is_set()):
@@ -573,11 +583,28 @@ async def worker(front_src, rear_src, nc, topic: str, nav, stop_evt=None, traffi
         fframe = front_src.latest()[1] if front_src else None
         if rframe is not None and stamp != last_stamp:
             last_stamp = stamp
+            hash_state = frame_guard.check(fframe, rframe, nav.mode) if frame_guard else None
             if navlog is not None:
                 navlog.emit("frame_received", source_stamp=stamp,
                             front=frame_metrics(fframe), rear=frame_metrics(rframe),
-                            route=nav.route, mode=nav.mode)
-            cmd = nav.step(fframe, rframe)
+                            route=nav.route, mode=nav.mode, frame_hash=hash_state)
+            if hash_state and hash_state["stale"]:
+                cmd = {
+                    "move_type": "stop",
+                    "deg": 0.0,
+                    "reason": "stale_frame",
+                    "route_loaded": nav.route is not None,
+                    "route": nav.route,
+                    "map": nav.front_map if nav.mode == "front" else nav.rear_map,
+                    "mode": nav.mode,
+                    "cam": nav.mode,
+                    "paused": bool(nav.pf.paused and nav.pr.paused),
+                }
+            else:
+                cmd = nav.step(fframe, rframe)
+            if hash_state is not None:
+                cmd["frame_hash_enabled"] = bool(hash_state["enabled"])
+                cmd["frame_stale"] = bool(hash_state["stale"])
             if navlog is not None:
                 navlog.emit("command_after_navigation", source_stamp=stamp, command=dict(cmd))
                 navlog.emit("navigation_state", source_stamp=stamp, state=nav.diagnostics())
@@ -653,6 +680,7 @@ async def main() -> int:
         "LOOKAHEAD_NODES", "LOOKAHEAD_MIN", "LOOKAHEAD_ADAPT",
         "LOOKAHEAD_SPEED_DIV", "LOOKAHEAD_MAX", "DEADZONE_DEG", "NAV_LAG_S",
         "NAV_LAG_ADAPTIVE", "NAV_LEAD_MAX", "NAV_WIN_NODES",
+        "FRAME_HASH_CHECK_ENABLED", "FRAME_HASH_STALE_AFTER_S", "FRAME_HASH_RECOVERY_FRAMES",
     )
     navlog.emit(
         "navigation_config",
@@ -773,9 +801,14 @@ async def main() -> int:
     if front_src:
         front_src.start()
     rear_src.start()
+    frame_guard = FrameHashGuard(
+        enabled=getattr(config, "FRAME_HASH_CHECK_ENABLED", True),
+        stale_after_s=getattr(config, "FRAME_HASH_STALE_AFTER_S", 0.4),
+        recovery_frames=getattr(config, "FRAME_HASH_RECOVERY_FRAMES", 3),
+    )
     try:
         await worker(front_src, rear_src, nc, config.NATS_TOPIC, nav, stop_evt, traffic,
-                     recovery, direction, route_profile, navlog)
+                     recovery, direction, route_profile, frame_guard, navlog)
     except Exception as exc:
         navlog.emit("service_failed", error=repr(exc))
         raise

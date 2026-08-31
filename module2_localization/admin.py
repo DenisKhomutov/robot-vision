@@ -112,6 +112,7 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   <span id="mode" class="badge">—</span>
   <span id="traffic" class="badge">светофор off</span>
   <span id="direction" class="badge">направление off</span>
+  <span id="frameHash" class="badge">хеш off</span>
   <span id="maneuvers" class="badge ok">манёвры вкл</span>
   <span id="recovery" class="badge ok">shard</span>
 </header>
@@ -172,6 +173,14 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
       <div class="row2">
         <button class="toggle" id="btnDirOn" data-cmd="set_direction" data-enabled="true">ВКЛ</button>
         <button class="toggle" id="btnDirOff" data-cmd="set_direction" data-enabled="false">ВЫКЛ</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Защита от зависшего кадра</h2>
+      <div class="row2">
+        <button class="toggle" id="btnHashOn" data-cmd="set_frame_hash" data-enabled="true">ВКЛ</button>
+        <button class="toggle" id="btnHashOff" data-cmd="set_frame_hash" data-enabled="false">ВЫКЛ</button>
       </div>
     </section>
 
@@ -283,6 +292,10 @@ async function tick(){
       `направление ${status.direction_enabled?'вкл':'выкл'}${status.direction?' · '+status.direction:''}`,
       status.direction_enabled?'ok':'');
 
+    setBadge($('#frameHash'),
+      status.frame_hash_enabled?`хеш ${status.frame_stale?'ЗАВИС':'вкл'}`:'хеш выкл',
+      status.frame_stale?'bad':(status.frame_hash_enabled?'ok':''));
+
     setBadge($('#maneuvers'),status.terminal_maneuvers===false?'манёвры 2-1 выкл':'манёвры 2-1 вкл',
       status.terminal_maneuvers===false?'warn':'ok');
 
@@ -310,6 +323,8 @@ async function tick(){
     $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
     $('#btnDirOn').classList.toggle('active',!!status.direction_enabled);
     $('#btnDirOff').classList.toggle('active',!status.direction_enabled);
+    $('#btnHashOn').classList.toggle('active',!!status.frame_hash_enabled);
+    $('#btnHashOff').classList.toggle('active',!status.frame_hash_enabled);
     $('#btnManeuversOn').classList.toggle('active',status.terminal_maneuvers!==false);
     $('#btnManeuversOff').classList.toggle('active',status.terminal_maneuvers===false);
 
@@ -559,7 +574,7 @@ async def main() -> int:
                 await respond(writer, "200 OK", json.dumps(payload).encode(), "application/json")
             elif method == "POST" and path == "/api/control":
                 command = json.loads(body or b"{}")
-                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "clear_route", "set_traffic", "set_direction", "set_terminal_maneuvers"}
+                allowed = {"pause", "resume", "reset", "reset_shard", "reset_traffic", "set_mode", "set_route", "clear_route", "set_traffic", "set_direction", "set_terminal_maneuvers", "set_frame_hash"}
                 if command.get("cmd") not in allowed:
                     await respond(writer, "400 Bad Request", b'{"message":"unknown command"}', "application/json")
                     return
