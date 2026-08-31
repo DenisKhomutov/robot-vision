@@ -1,88 +1,53 @@
 import time
-import zlib
 
 
-class FrameHashGuard:
-    def __init__(self, enabled=True, stale_after_s=0.4, recovery_frames=3):
+class FrameTimeoutGuard:
+    def __init__(self, enabled=True, timeout_s=0.5, recovery_frames=3):
         self.enabled = bool(enabled)
-        self.stale_after_s = float(stale_after_s)
+        self.timeout_s = float(timeout_s)
         self.recovery_frames = max(1, int(recovery_frames))
         self.reset()
 
-    def reset(self):
-        self._last_hash = None
-        self._same_since = None
-        self._stale = False
+    def reset(self, now=None):
+        now = time.monotonic() if now is None else float(now)
+        self._last_token = None
+        self._last_fresh_at = now
+        self._timed_out = False
         self._fresh_frames = 0
-        self.last = {
+        self.last = self._state(now, fresh=False)
+
+    def set_enabled(self, enabled, now=None):
+        self.enabled = bool(enabled)
+        self.reset(now)
+
+    def _state(self, now, fresh):
+        return {
             "enabled": self.enabled,
-            "hash": None,
-            "repeat_s": 0.0,
-            "stale": False,
-            "recovering": False,
-            "fresh_frames": 0,
+            "fresh": bool(fresh),
+            "age_s": round(max(0.0, now - self._last_fresh_at), 4),
+            "timed_out": bool(self._timed_out),
+            "recovering": bool(self._timed_out and self._fresh_frames > 0),
+            "fresh_frames": int(self._fresh_frames),
         }
 
-    def set_enabled(self, enabled):
-        self.enabled = bool(enabled)
-        self.reset()
-
-    @staticmethod
-    def _hash_frame(frame, seed=0):
-        if frame is None:
-            return seed
-        if not frame.flags.c_contiguous:
-            frame = frame.copy()
-        return zlib.crc32(memoryview(frame), seed) & 0xFFFFFFFF
-
-    def check(self, front_frame, rear_frame, mode="front", now=None):
-        if not self.enabled:
-            self.last = {
-                "enabled": False,
-                "hash": None,
-                "repeat_s": 0.0,
-                "stale": False,
-                "recovering": False,
-                "fresh_frames": 0,
-            }
-            return self.last
-
+    def observe(self, token, now=None):
         now = time.monotonic() if now is None else float(now)
-        if mode == "front":
-            value = self._hash_frame(front_frame)
-        elif mode == "rear":
-            value = self._hash_frame(rear_frame)
-        else:
-            value = self._hash_frame(front_frame)
-            value = self._hash_frame(rear_frame, value)
-
-        repeated = self._last_hash is not None and value == self._last_hash
-        if repeated:
-            self._fresh_frames = 0
-            if self._same_since is None:
-                self._same_since = now
-            repeat_s = max(0.0, now - self._same_since)
-            if repeat_s >= self.stale_after_s:
-                self._stale = True
-        else:
-            self._last_hash = value
-            self._same_since = None
-            repeat_s = 0.0
-            if self._stale:
+        fresh = token is not None and token != self._last_token
+        if fresh:
+            self._last_token = token
+            self._last_fresh_at = now
+            if self._timed_out:
                 self._fresh_frames += 1
                 if self._fresh_frames >= self.recovery_frames:
-                    self._stale = False
+                    self._timed_out = False
                     self._fresh_frames = 0
             else:
                 self._fresh_frames = 0
-
-        self.last = {
-            "enabled": True,
-            "hash": f"{value:08x}",
-            "repeated": repeated,
-            "repeat_s": round(repeat_s, 4),
-            "stale": self._stale,
-            "recovering": self._stale and not repeated,
-            "fresh_frames": self._fresh_frames,
-        }
+        elif self.enabled and now - self._last_fresh_at >= self.timeout_s:
+            self._timed_out = True
+            self._fresh_frames = 0
+        self.last = self._state(now, fresh)
         return self.last
+
+    def poll(self, now=None):
+        return self.observe(self._last_token, now)

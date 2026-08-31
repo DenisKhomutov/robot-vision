@@ -16,7 +16,7 @@ import numpy as np
 
 from .. import config
 from ..core.pilot import Pilot
-from ..frame_guard import FrameHashGuard
+from ..frame_guard import FrameTimeoutGuard
 from ..service import DirectionController, RouteProfileController, TrafficBranch
 from ..services.localization_service import build_runtime_localizer
 
@@ -89,7 +89,7 @@ def main() -> int:
     parser.add_argument("--direction", action=argparse.BooleanOptionalAction, default=False,
                         help="проверка зон заднего хода (config.BACKWARD_ZONES)")
     parser.add_argument("--terminal-maneuvers", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--frame-hash", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--frame-timeout", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
     if args.min_inliers is not None:
@@ -129,10 +129,10 @@ def main() -> int:
     route_profile = RouteProfileController(config, terminal_maneuvers=args.terminal_maneuvers)
     traffic = None
     traffic_completed = False
-    frame_guard = FrameHashGuard(
-        enabled=args.frame_hash,
-        stale_after_s=getattr(config, "FRAME_HASH_STALE_AFTER_S", 0.4),
-        recovery_frames=getattr(config, "FRAME_HASH_RECOVERY_FRAMES", 3),
+    frame_guard = FrameTimeoutGuard(
+        enabled=args.frame_timeout,
+        timeout_s=getattr(config, "FRAME_TIMEOUT_S", 0.5),
+        recovery_frames=getattr(config, "FRAME_TIMEOUT_RECOVERY_FRAMES", 3),
     )
     canvas, route_px, px = build_canvas(args.full_map)
     trail = deque(maxlen=80)
@@ -165,7 +165,7 @@ def main() -> int:
         "direction": bool(args.direction),
         "traffic": bool(args.traffic),
         "terminal_maneuvers": bool(args.terminal_maneuvers),
-        "frame_hash": bool(args.frame_hash),
+        "frame_timeout": bool(args.frame_timeout),
     }, ensure_ascii=False) + "\n")
     started = time.perf_counter()
     timings = []
@@ -202,8 +202,8 @@ def main() -> int:
             active_map = map_name
             switch_banner = max(1, int(output_fps * 2))
         command = pilot.step(result, now=source_index / source_fps)
-        hash_state = frame_guard.check(frame, None, "front", now=source_index / source_fps)
-        if hash_state["stale"]:
+        frame_state = frame_guard.observe(source_index, now=source_index / source_fps)
+        if frame_state["timed_out"]:
             command["move_type"] = "stop"
             command["deg"] = 0.0
             command["reason"] = "stale_frame"
@@ -270,7 +270,7 @@ def main() -> int:
             "terminal_maneuvers": command.get("terminal_maneuvers"),
             "localization_diagnostics": result.get("diagnostics"),
             "pilot_state": pilot.diagnostics(now=source_index / source_fps),
-            "frame_hash": hash_state,
+            "frame_guard": frame_state,
         }, ensure_ascii=False) + "\n")
 
         good = result.get("ok") and pilot.accepted
@@ -309,11 +309,11 @@ def main() -> int:
         cv2.putText(bar, f"preload: {preload_text}", (900, 30), FONT, 0.58, (180, 180, 180), 1)
         cv2.putText(bar, f"{elapsed_ms:.0f} ms  source {source_index}/{total or '?'}  fixes {fixed}/{processed}",
                     (900, 64), FONT, 0.58, (180, 180, 180), 1)
-        hash_text = "HASH OFF" if not hash_state["enabled"] else (
-            f"HASH STALE {hash_state['repeat_s']:.2f}s" if hash_state["stale"] else "HASH OK"
+        hash_text = "FRAME CONTROL OFF" if not frame_state["enabled"] else (
+            f"FRAME TIMEOUT {frame_state['age_s']:.2f}s" if frame_state["timed_out"] else "FRAME FLOW OK"
         )
         cv2.putText(bar, hash_text, (900, 96), FONT, 0.58,
-                    (60, 60, 240) if hash_state["stale"] else (100, 210, 130), 2)
+                    (60, 60, 240) if frame_state["timed_out"] else (100, 210, 130), 2)
         if switch_banner:
             cv2.putText(bar, f"SHARD SWITCH -> {active_map}", (900, 118), FONT, 0.55, (0, 235, 235), 1)
             switch_banner -= 1
