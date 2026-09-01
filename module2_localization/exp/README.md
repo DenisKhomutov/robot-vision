@@ -1,94 +1,57 @@
-# Эксперимент единой компактной карты
+# MSLD — многосессионная дистилляция ориентиров
 
-Эксперимент не изменяет `module2_localization/maps` и не подключён к runtime-демону.
-Все производные файлы по умолчанию сохраняются в:
+Эксперимент проверяет, сохраняет ли отбор устойчивых 3D-точек качество
+локализации при сокращении банка. Боевые карты не изменяются.
+
+Быстрый тест солнечного участка маршрута `1-2`:
+
+```bash
+python -m module2_localization.exp.msld_experiment
+```
+
+По умолчанию используются:
+
+- `1-2/front_shard/03_of_25`;
+- обычный участок первого видео, соответствующий этому шарду;
+- первая половина `data/test_neg.mkv` для оценки стабильности;
+- вторая половина `test_neg` для контроля.
+
+Сравниваются:
+
+- полный исходный банк;
+- стабильностный отбор 75%, 50% и 25% точек;
+- случайный отбор тех же 75%, 50% и 25% точек.
+
+Результаты сохраняются в:
 
 ```text
-module2_localization/exp/artifacts/<маршрут>/<карта>/
+module2_localization/exp/artifacts/msld/<дата_время>/
+├── maps/
+├── diagnostics/
+├── landmark_statistics.npz
+├── summary.csv
+└── summary.json
 ```
 
-Для `2-1/front_full`:
+Каждый `stable_*` дополнительно содержит готовую модель COLMAP GUI:
 
 ```text
-module2_localization/exp/artifacts/2-1/front_full/
-├── compact_bank.npz
-├── metadata.json
-├── compact_flat.faiss
-└── compact_ivf.faiss
+maps/stable_XX/gui/images/
+maps/stable_XX/gui/sparse/0/
+maps/stable_XX/gui/gui.json
 ```
 
-Каталог `artifacts` исключён из Git.
-
-## Дополнение банка новым освещением
-
-Скрипт добавляет только геометрически подтверждённые дескрипторы к уже
-существующим 3D-точкам. Рабочие карты и шарды не перезаписываются.
+Повторный ручной экспорт:
 
 ```bash
-uv run --no-sync python -m module2_localization.exp.augment_descriptor_bank \
-  module2_localization/data/test_neg.mkv \
-  --map 1-2/front_full \
-  --frame-step 20 --max-frames 12
+python -m module2_localization.exp.export_msld_gui \
+  module2_localization/exp/artifacts/msld/<запуск>/maps/stable_25
 ```
 
-Результат сохраняется в
-`module2_localization/exp/artifacts/1-2/front_full/sunny_bank/`.
+Главные метрики: `recall15`, `recall20`, `inliers_p10`, `inliers_median`,
+`longest_lost15`, `frame_ms_median` и `frame_ms_p90`.
 
-## 1. Компактный банк
-
-Без FAISS, два medoid на 3D-точку:
-
-```bash
-cd ~/projects/robot-vision
-uv run --no-sync python -m module2_localization.exp.build_compact_bank \
-  --map 2-1/front_full \
-  --prototypes 2
-```
-
-Однопрототипный вариант нужно сохранять в другой `--output`, чтобы не затереть
-двухпрототипный результат.
-
-## 2. Точный контрольный прогон
-
-```bash
-uv run --no-sync python -m module2_localization.exp.test_compact_fullmap_video \
-  module2_localization/data/front_2-1/camera-front-1-720.mkv \
-  --map 2-1/front_full \
-  --bank compact \
-  --backend torch-exact \
-  --step 8 \
-  --out module2_localization/out/compact_21_exact
-```
-
-Результат содержит `result.mp4`, `diagnostics.jsonl` и `summary.json`.
-
-Для контрольного полного исходного банка используется `--bank original`. Он
-может потребовать значительно больше GPU-памяти и времени.
-
-## 3. FAISS
-
-FAISS не добавлен в зависимости проекта: на x86 и Jetson требуются разные
-совместимые сборки. После установки FAISS в используемое Python-окружение:
-
-```bash
-python -m module2_localization.exp.build_faiss_index \
-  --map 2-1/front_full \
-  --mode both \
-  --nlist 1024
-```
-
-Прогон IVF:
-
-```bash
-python -m module2_localization.exp.test_compact_fullmap_video \
-  module2_localization/data/front_2-1/camera-front-1-720.mkv \
-  --map 2-1/front_full \
-  --backend faiss-ivf \
-  --nprobe 32 \
-  --step 8 \
-  --out module2_localization/out/compact_21_ivf32
-```
-
-Сначала сравниваются исходный банк и `torch-exact`, затем `faiss-flat`, после
-этого IVF с `nprobe=64`, `32` и `16`. Рабочий демон до принятия результатов не
-изменяется.
+Первый подтверждающий запуск сохранён в `20260901_142131`: стабильностный банк
+на 25% точек дал `recall20=1.0`, минимум 43 inliers и медиану 65.41 мс;
+случайный банк того же размера дал `recall20=0.6`, минимум 8 inliers и серию
+из четырёх кадров ниже 15 inliers.
