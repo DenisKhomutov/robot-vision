@@ -12,7 +12,12 @@ class TrafficLightDetector:
         self.model = YOLO(config.DETECTOR_WEIGHTS)
 
     def detect(self, image: Image.Image) -> list[Box]:
-        results = self.model(image, conf=config.DET_CONF, imgsz = config.DET_IMGSZ, verbose=False)
+        results = self.model(
+            image, 
+            conf=config.DET_CONF, 
+            imgsz = config.DET_IMGSZ, 
+            verbose=False)
+        
         boxes = results[0].boxes
 
         paired = sorted(
@@ -20,7 +25,9 @@ class TrafficLightDetector:
             key=lambda t: t[1],
             reverse=True,
         )
-        return [(int(x1), int(y1), int(x2), int(y2)) for (x1, y1, x2, y2), _ in paired]
+        
+        return [(int(x1), int(y1), int(x2), int(y2)) 
+                for (x1, y1, x2, y2), _ in paired]
 
 
 _detector: TrafficLightDetector | None = None

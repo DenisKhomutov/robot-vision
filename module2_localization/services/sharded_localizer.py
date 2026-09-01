@@ -1,5 +1,3 @@
-"""Background-preloaded chain of overlapping runtime localization shards."""
-
 from __future__ import annotations
 
 import json
@@ -19,8 +17,6 @@ class Localizer(Protocol):
 
 
 class ShardedLocalizer:
-    """Keep driving on the current shard while the adjacent shard loads."""
-
     def __init__(
         self,
         maps_dir: Path,
@@ -68,10 +64,6 @@ class ShardedLocalizer:
         self._preload_started: float | None = None
         self._force_recovery = False
         self._recovery = None
-
-
-
-
         self._lost_recovery_enabled = bool(full_recovery)
         self._recovery_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-recovery")
         self._recovery_future: Future | None = None
@@ -178,10 +170,6 @@ class ShardedLocalizer:
         self._future = self._executor.submit(self.factory, map_name, self.back_facing)
 
     def force_relocate(self) -> None:
-        """Ignore the current shard on the next locate() and relocalize via
-        the full recovery map. Call this whenever navigation resumes after a
-        pause — the robot may have been moved between shards while stopped,
-        and the current shard's local node no longer means anything."""
         self._force_recovery = True
         self._event("full_recovery_forced", current_map=self.current_map, current_index=self.index)
 
@@ -246,8 +234,6 @@ class ShardedLocalizer:
         if self._pending_index is None:
             return False
 
-
-
         policy = self.switch_policies.get(self.current_map, {})
         transition_start = int(policy.get("switch_global_start", item.get(
             "switch_global_start",
@@ -275,9 +261,6 @@ class ShardedLocalizer:
         return self.max_shard_index
 
     def _start_recovery_async(self, query: object) -> None:
-        """Запустить/держать recovery по полной карте в фоновом потоке — не
-        блокирует основной цикл, шард продолжает проверяться каждый кадр как
-        обычно. Пока прошлый запрос не завершился, новый не запускается."""
         if self._recovery is None:
             return
         if self._recovery_future is not None:
@@ -332,7 +315,6 @@ class ShardedLocalizer:
         target = self._index_for_global_node(global_node)
         if target not in self._loaded:
 
-
             name = str(self.shards[target]["map"])
             self._loaded[target] = self.factory(name, self.back_facing)
         switched = target != self.index
@@ -347,9 +329,6 @@ class ShardedLocalizer:
         self._preload_started = None
         self._last_global_node = global_node
         self._switch_progress_node = global_node
-
-
-
         recovered = dict(recovered)
         recovered["node"] = global_node - self.node_offset
         if recovered.get("target_node") is not None:

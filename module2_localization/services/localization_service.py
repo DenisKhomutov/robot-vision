@@ -2,7 +2,6 @@ from .. import config
 from ..core.localizer import AlikedLocalizer
 
 def build_localizer(map_name, back_facing, bank_path=None):
-    """Собрать локализатор для конкретной карты и направления камеры (тюнинги — из конфига)."""
     return AlikedLocalizer(
         map_name,
         kpts=config.QUERY_KPTS,
@@ -37,7 +36,6 @@ def build_localizer(map_name, back_facing, bank_path=None):
 
 def build_runtime_localizer(map_name, back_facing, full_recovery=None,
                             min_shard_index=None, max_shard_index=None, event_sink=None):
-    """Build a full-map localizer or an automatically advancing shard chain."""
     shard = config.MAPS_DIR / map_name / "shard.json"
     if not shard.exists():
         return build_localizer(map_name, back_facing)
