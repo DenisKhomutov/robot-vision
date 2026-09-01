@@ -22,11 +22,11 @@ def main() -> int:
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
-    from hub import use_local_weights
+    from model_weights import configure_local_model_weights
     from lightglue import ALIKED
     from lightglue.utils import load_image
 
-    use_local_weights()
+    configure_local_model_weights()
     work = ROOT / "maps" / args.map
     image_dir = ROOT / "data" / args.images
     rec = pycolmap.Reconstruction(str(work / "sparse" / "0"))

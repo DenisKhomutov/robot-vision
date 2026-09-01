@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-from module2_localization.core.localizer import AlikedLocalizer
+from module2_localization.core.aliked_localizer import ALIKEDLocalizer
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
     kw = {}
     if args.win_nodes is not None:
         kw["win_nodes"] = args.win_nodes
-    loc = AlikedLocalizer(args.map, **kw)
+    loc = ALIKEDLocalizer(args.map, **kw)
 
     times = []
     for i in range(args.n):

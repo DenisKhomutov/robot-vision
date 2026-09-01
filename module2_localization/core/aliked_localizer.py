@@ -10,10 +10,10 @@ import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-from .route import Localizer
+from .route_follower import RouteFollower
 
 
-class AlikedLocalizer:
+class ALIKEDLocalizer:
     def __init__(self, map_name="map_office_ref", device=None, kpts=2048, route_range=None,
                  det_threshold=0.2, nms_radius=2, max_error=12.0, steer="pursuit", route_cam=None,
                  route_nodes=None, back_facing=False, match_ratio=0.9, match_topk=8,
@@ -22,9 +22,9 @@ class AlikedLocalizer:
                  stanley_k=1.0, heading_gate=0.3, stop_end_nodes=3,
                  lag_s=0.18, lag_adaptive=False, lead_max=1.5, lead_smooth=5, win_nodes=0,
                  lookahead_speed_div=None, lookahead_max=None, bank_path=None):
-        from .hub import use_local_weights
+        from .model_weights import configure_local_model_weights
         from lightglue import ALIKED
-        use_local_weights()
+        configure_local_model_weights()
         self.max_error = max_error
         self.steer = steer
         self.route_cam = route_cam
@@ -302,7 +302,7 @@ class AlikedLocalizer:
                 intrinsics_source = "map_scaled"
             else:
                 source = query.get("source")
-                ef = None if source is None else Localizer.focal_from_exif(source, w_img)
+                ef = None if source is None else RouteFollower.focal_from_exif(source, w_img)
                 f0 = exif_focal or ef or self.focal_fallback * max(w_img, h_img)
                 K = np.array([[f0, 0, w_img / 2], [0, f0, h_img / 2], [0, 0, 1.0]])
                 dist = np.zeros(4)
@@ -379,7 +379,7 @@ class AlikedLocalizer:
 
 
         C_lead = self._lead(C, fwd, t_ext + t_match + t_pnp)
-        out.update(Localizer.command(self, C_lead, fwd, mode=self.steer))
+        out.update(RouteFollower.command(self, C_lead, fwd, mode=self.steer))
         out["C_lead"] = C_lead
         diagnostics["pose"] = {
             "camera_center": C.tolist(),
@@ -410,7 +410,7 @@ def main():
     ap.add_argument("--route-range", default=None, help="эталон только по кадрам a:b (напр. 0:525)")
     args = ap.parse_args()
     rr = tuple(int(x) for x in args.route_range.split(':')) if args.route_range else None
-    loc = AlikedLocalizer(args.map, route_range=rr)
+    loc = ALIKEDLocalizer(args.map, route_range=rr)
     print(f"\n{'фото':<20}{'инл.':>6}{'пар':>7}{'узел':>6}{'до линии':>10}{'азимут':>9}{'команда':>10}{'мс':>7}")
     for p in args.photos:
         r = loc.locate(Path(p))

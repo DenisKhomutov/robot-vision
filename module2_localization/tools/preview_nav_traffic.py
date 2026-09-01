@@ -18,8 +18,8 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from module2_localization.core.localizer import AlikedLocalizer
-from module2_localization.core.pilot import Pilot
+from module2_localization.core.aliked_localizer import ALIKEDLocalizer
+from module2_localization.core.command_filter import NavigationCommandFilter
 import config as cfg
 
 sys.path.insert(0, str(ROOT.parent))
@@ -79,12 +79,12 @@ def main():
     ap.add_argument("--det-conf", type=float, default=0.15)
     args = ap.parse_args()
 
-    loc = AlikedLocalizer(args.map, kpts=cfg.QUERY_KPTS, det_threshold=cfg.QUERY_DET_THRESHOLD,
+    loc = ALIKEDLocalizer(args.map, kpts=cfg.QUERY_KPTS, det_threshold=cfg.QUERY_DET_THRESHOLD,
                           nms_radius=cfg.QUERY_NMS_RADIUS, max_error=cfg.MAX_ERROR,
                           back_facing=cfg.REAR_CAM_BACK, match_ratio=cfg.MATCH_RATIO,
                           match_topk=cfg.MATCH_TOPK, focal_fallback=cfg.FOCAL_FALLBACK,
                           min_pairs=cfg.MIN_PAIRS)
-    pilot = Pilot(cfg)
+    pilot = NavigationCommandFilter(cfg)
     pilot.resume()
     import module1_traffic_light as tl
     tl.config.DET_CONF = args.det_conf

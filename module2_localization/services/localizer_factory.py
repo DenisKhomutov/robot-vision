@@ -1,8 +1,8 @@
 from .. import config
-from ..core.localizer import AlikedLocalizer
+from ..core.aliked_localizer import ALIKEDLocalizer
 
-def build_localizer(map_name, back_facing, bank_path=None):
-    return AlikedLocalizer(
+def create_localizer(map_name, back_facing, bank_path=None):
+    return ALIKEDLocalizer(
         map_name,
         kpts=config.QUERY_KPTS,
         det_threshold=config.QUERY_DET_THRESHOLD,
@@ -34,11 +34,11 @@ def build_localizer(map_name, back_facing, bank_path=None):
     )
 
 
-def build_runtime_localizer(map_name, back_facing, full_recovery=None,
+def create_runtime_localizer(map_name, back_facing, full_recovery=None,
                             min_shard_index=None, max_shard_index=None, event_sink=None):
     shard = config.MAPS_DIR / map_name / "shard.json"
     if not shard.exists():
-        return build_localizer(map_name, back_facing)
+        return create_localizer(map_name, back_facing)
     from .sharded_localizer import ShardedLocalizer
     if full_recovery is None:
         full_recovery = getattr(config, "SHARD_FULL_RECOVERY", False)
@@ -46,7 +46,7 @@ def build_runtime_localizer(map_name, back_facing, full_recovery=None,
         config.MAPS_DIR,
         map_name,
         back_facing,
-        build_localizer,
+        create_localizer,
         preload_nodes=config.SHARD_PRELOAD_NODES,
         confirm_fixes=config.SHARD_CONFIRM_FIXES,
         min_inliers=config.MIN_INLIERS,

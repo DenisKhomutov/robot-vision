@@ -18,7 +18,7 @@ def set_speed_pwm(value):
     _speed_pwm = value
 
 
-class Localizer:
+class RouteFollower:
 
     @staticmethod
     def focal_from_exif(path, width):

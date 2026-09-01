@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-from module2_localization.core.localizer import AlikedLocalizer
-from module2_localization.core.route import Localizer
+from module2_localization.core.aliked_localizer import ALIKEDLocalizer
+from module2_localization.core.route_follower import RouteFollower
 
 
 def main():
@@ -23,7 +23,7 @@ def main():
     ap.add_argument("--topk", type=int, default=10)
     args = ap.parse_args()
 
-    loc = AlikedLocalizer(args.map)
+    loc = ALIKEDLocalizer(args.map)
     xyz = loc.points
     R = loc.route
     lo, hi = np.percentile(np.vstack([xyz[:, [0, 2]], R[:, [0, 2]]]), [1, 99], axis=0)
@@ -59,7 +59,7 @@ def main():
             qpath = Path("/tmp") / f"_q_{src.stem}.jpg"
             cv2.imwrite(str(qpath), im, [cv2.IMWRITE_JPEG_QUALITY, 95])
 
-        ef = Localizer.focal_from_exif(src, cv2.imread(str(qpath)).shape[1])
+        ef = RouteFollower.focal_from_exif(src, cv2.imread(str(qpath)).shape[1])
         r = loc.locate(qpath, exif_focal=ef)
         img = base.copy()
         title = src.name

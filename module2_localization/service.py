@@ -13,11 +13,11 @@ import cv2
 import numpy as np
 
 from . import config
-from .core.dualnav import DualNav
+from .core.camera_navigator import CameraNavigator
 from .frame_guard import FrameTimeoutGuard
 from .nats_client import NatsClient
 from .navigation_log import NavigationLog, frame_metrics
-from .services.localization_service import build_runtime_localizer
+from .services.localizer_factory import create_runtime_localizer
 
 
 class ShmSource:
@@ -196,7 +196,7 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, 
         try:
             back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
             localizer = await asyncio.to_thread(
-                build_runtime_localizer, map_name, back_facing, full_recovery,
+                create_runtime_localizer, map_name, back_facing, full_recovery,
                 min_shard_index, max_shard_index,
                 navlog.emit if navlog is not None else None,
             )
@@ -352,7 +352,7 @@ def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, 
 
 class TrafficBranch:
     """Ветка светофора: детекция+классификация ВСЕГДА на переднем кадре, но публикуем
-    только когда активная навигация в ЗОНЕ. Зону выбирает активная камера DualNav:
+    только когда активная навигация в ЗОНЕ. Зону выбирает активная камера CameraNavigator:
     ведёт фронт -> зона фронт-карты, ведёт зад -> зона зад-карты. Последнюю позу помним
     (обе камеры потеряны -> навигация стоп, но светофор продолжает по последней зоне)."""
 
@@ -703,7 +703,7 @@ async def main() -> int:
     ap.add_argument("--shm", nargs="?", const=config.CAM_SHM_SOCKET, default=None,
                     help=f"кадры из ветки fan-out (по умолчанию {config.CAM_SHM_SOCKET})")
     ap.add_argument("--dual", action="store_true",
-                    help="двухкамерный режим: грузит фронт+зад локализаторы, можно переключать в viz")
+                    help="двухкамерный режим: грузит фронтальный и задний локализаторы")
     ap.add_argument("--video-front", default=None, help="dual: видео передней (отладка)")
     ap.add_argument("--video-rear", default=None, help="dual: видео задней (отладка)")
     ap.add_argument("--video-loop", action=argparse.BooleanOptionalAction, default=True,
@@ -767,10 +767,10 @@ async def main() -> int:
     want_front = front_map is not None and (args.mode in ("dual", "front") if args.mode else default_mode != "rear")
     want_rear = rear_map is not None and (args.mode in ("dual", "rear") if args.mode else default_mode == "rear")
     if want_front:
-        front_loc = build_runtime_localizer(
+        front_loc = create_runtime_localizer(
             front_map, config.FRONT_CAM_BACK, full_recovery=recovery, event_sink=navlog.emit)
     if want_rear:
-        rear_loc = build_runtime_localizer(
+        rear_loc = create_runtime_localizer(
             rear_map, config.REAR_CAM_BACK, full_recovery=recovery, event_sink=navlog.emit)
 
 
@@ -786,7 +786,7 @@ async def main() -> int:
             if dual:
                 return 1
 
-    nav = DualNav(front_loc, rear_loc, config, front_map=front_map, rear_map=rear_map,
+    nav = CameraNavigator(front_loc, rear_loc, config, front_map=front_map, rear_map=rear_map,
                   route=route, front_route=route if front_loc else None,
                   rear_route=route if rear_loc else None)
     if args.mode:
@@ -829,7 +829,7 @@ async def main() -> int:
             nc = None
 
     if nc is not None:
-        from .core import route as route_mod
+        from .core import route_follower as route_mod
 
         async def on_speed(msg):
             try:

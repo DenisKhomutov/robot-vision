@@ -14,12 +14,12 @@
 
 ```
 камера -> fan-out (tee -> shmsink) -> демон локализации -> NATS -> мозг робота
-                                                              \-> viz оператора
+                                                              \-> веб-админка
 ```
 
 Демон читает кадр, ищет позу в 3D-карте маршрута (ALIKED + PnP через OpenCV), считает команду
-и публикует её в топик `robot.vision.localization`. Топик слушают двое: контроллер
-робота и окно визуализации на машине оператора — NATS раздаёт копию каждому.
+и публикует её в топик `robot.vision.localization`. Топик слушают контроллер
+робота и веб-админка — NATS раздаёт копию каждому.
 
 ### Формат сообщений
 
@@ -74,7 +74,7 @@ uv run --no-sync python -c "import torch; print(torch.__version__, torch.cuda.is
 ```
 
 Веса ALIKED и LightGlue лежат в `module2_localization/weights/` и подключаются
-автоматически ([core/hub.py](module2_localization/core/hub.py)) — сеть при запуске не нужна.
+автоматически ([core/model_weights.py](module2_localization/core/model_weights.py)) — сеть при запуске не нужна.
 
 ### Ловушка: `uv run` без `--no-sync`
 
@@ -110,13 +110,15 @@ uv run --no-sync python -m module2_localization.service \
     --source-step 20 --no-nats
 ```
 
-Визуализация — на машине оператора, не на роботе:
+Веб-админка:
 
 ```bash
-uv run --no-sync python -m module2_localization.viz --map map_rig3
+python -m module2_localization.admin \
+  --bind 0.0.0.0 --port 8080 \
+  --nats-url nats://127.0.0.1:4222
 ```
 
-Адрес брокера берётся из `NATS_HOST` в [config.py](module2_localization/config.py); выход — Esc.
+После запуска интерфейс доступен на порту `8080` машины, где запущена админка.
 
 ## Инструменты
 
@@ -153,7 +155,7 @@ uv run --no-sync python module2_localization/tools/make_video.py <видео> \
 colmap gui --import_path module2_localization/maps/map_rig3/sparse/0
 ```
 
-Демон и отрисовщик считают команду одним кодом ([core/pilot.py](module2_localization/core/pilot.py)),
+Демон и видеопрогон считают команду одним кодом ([core/command_filter.py](module2_localization/core/command_filter.py)),
 поэтому видео показывает ровно то, что уйдёт роботу.
 
 ## Деплой на Jetson (Orin Nano 8 ГБ, JetPack 6 / Ubuntu 22.04)
@@ -185,7 +187,7 @@ docker compose -f docker-compose.jetson.yml logs -f localization
 docker compose -f docker-compose.jetson.yml down
 ```
 
-`network_mode: host` — чтобы демон видел локальный NATS, а viz оператора цеплялся
+`network_mode: host` — чтобы демон и веб-админка видели локальный NATS
 снаружи. `ipc: host` и монтирование `/tmp` — чтобы `shmsrc` добрался до разделяемой
 памяти fan-out. Без них сокет откроется, а кадры не придут.
 
@@ -229,7 +231,7 @@ lightglue, kornia, nats-py, loguru — ничего компилировать �
 | `MAX_REJECTS` | столько отказов подряд — верим кадру (защита от вечного `lost`) |
 | `STOP_CONFIRM`, `STOP_MIN_INLIERS` | подтверждение конца маршрута перед латчем |
 | `LOOKAHEAD_NODES`, `DEADZONE_DEG` | упреждение и мёртвая зона азимута |
-| `NATS_HOST`, `NATS_URL`, `NATS_TOPIC` | куда публикуем и куда цепляется viz |
+| `NATS_HOST`, `NATS_URL`, `NATS_TOPIC` | параметры подключения к NATS |
 
 ## Линтеры и типы
 

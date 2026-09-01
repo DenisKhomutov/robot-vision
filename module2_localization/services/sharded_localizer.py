@@ -10,7 +10,7 @@ from typing import Callable, Protocol
 LOGGER = logging.getLogger("sharded-localizer")
 
 
-class Localizer(Protocol):
+class LocalizationBackend(Protocol):
     def locate(self, frame: object) -> dict: ...
     def extract_query(self, frame: object) -> object: ...
     def locate_features(self, query: object) -> dict: ...
@@ -22,7 +22,7 @@ class ShardedLocalizer:
         maps_dir: Path,
         start_map: str,
         back_facing: bool,
-        factory: Callable[[str, bool], Localizer],
+        factory: Callable[[str, bool], LocalizationBackend],
         preload_nodes: int = 25,
         confirm_fixes: int = 2,
         min_inliers: int = 20,
@@ -51,8 +51,8 @@ class ShardedLocalizer:
         self.index = next(i for i, item in enumerate(self.shards) if item["map"] == start_map)
         if not self.min_shard_index <= self.index <= self.max_shard_index:
             raise ValueError("стартовый шард находится вне разрешённого диапазона")
-        self.current: Localizer | None = None
-        self._loaded: dict[int, Localizer] = {}
+        self.current: LocalizationBackend | None = None
+        self._loaded: dict[int, LocalizationBackend] = {}
         self.current_map = start_map
         self.node_offset = int(self.shards[self.index]["global_node_start"])
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="map-preload")

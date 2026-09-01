@@ -24,7 +24,7 @@ def to_command(r, min_inliers):
     return cmd
 
 
-class Pilot:
+class NavigationCommandFilter:
     def __init__(self, cfg):
         self.cfg = cfg
         self.chist = deque(maxlen=getattr(cfg, "POSE_HISTORY", 5))

@@ -9,9 +9,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from module2_localization.core.localizer import AlikedLocalizer
-from module2_localization.core.pilot import Pilot
-from module2_localization.core.route import Localizer
+from module2_localization.core.aliked_localizer import ALIKEDLocalizer
+from module2_localization.core.command_filter import NavigationCommandFilter
+from module2_localization.core.route_follower import RouteFollower
 import config as cfg
 
 
@@ -24,7 +24,7 @@ def predict_path(loc, C, fwd, mode, steps=45, gain=0.4):
     fs /= np.linalg.norm(fs) + 1e-9
     pts = [Cs.copy()]
     for _ in range(steps):
-        r = Localizer.command(loc, Cs, fs, mode=mode)
+        r = RouteFollower.command(loc, Cs, fs, mode=mode)
         a = float(np.clip(np.radians(r["bearing_deg"]) * gain, -0.5, 0.5))
         ca, sa = np.cos(a), np.sin(a)
         x, z = fs[0], fs[2]
@@ -105,7 +105,7 @@ def main():
     lead_max = cfg.NAV_LEAD_MAX if args.lead_max is None else args.lead_max
     lead_smooth = cfg.NAV_LEAD_SMOOTH if args.lead_smooth is None else args.lead_smooth
 
-    loc = AlikedLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
+    loc = ALIKEDLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
                           route_cam=args.route_cam,
                           route_nodes=args.route_nodes if args.route_nodes is not None else cfg.ROUTE_NODES,
@@ -132,7 +132,7 @@ def main():
 
     tmp = ROOT / "out" / "_frame.jpg"
     trail = deque(maxlen=TRAIL)
-    pilot = Pilot(cfg)
+    pilot = NavigationCommandFilter(cfg)
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []

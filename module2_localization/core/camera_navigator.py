@@ -1,11 +1,11 @@
-from .pilot import Pilot
+from .command_filter import NavigationCommandFilter
 
 
-class DualNav:
+class CameraNavigator:
     def __init__(self, front_loc, rear_loc, cfg, front_map=None, rear_map=None,
                  route=None, front_route=None, rear_route=None):
         self.front, self.rear, self.cfg = front_loc, rear_loc, cfg
-        self.pf, self.pr = Pilot(cfg), Pilot(cfg)
+        self.pf, self.pr = NavigationCommandFilter(cfg), NavigationCommandFilter(cfg)
         self.mode = getattr(cfg, "NAV_MODE", "rear")
         self.active = "front"
         self.front_lost = self.front_good = 0
@@ -62,8 +62,8 @@ class DualNav:
         self.active = "front"
         self.front_lost = 0
         self.front_good = 0
-        self.pf = Pilot(self.cfg)
-        self.pr = Pilot(self.cfg)
+        self.pf = NavigationCommandFilter(self.cfg)
+        self.pr = NavigationCommandFilter(self.cfg)
 
     def _node_offset(self, map_name):
         if not map_name:
@@ -83,7 +83,7 @@ class DualNav:
             self.front_map = map_name
             self.front_route = route
             self.front_node_offset = self._node_offset(map_name)
-            self.pf = Pilot(self.cfg)
+            self.pf = NavigationCommandFilter(self.cfg)
             if not was_paused:
                 self.pf.resume()
             self.active = "front"
@@ -94,7 +94,7 @@ class DualNav:
             self.rear_map = map_name
             self.rear_route = route
             self.rear_node_offset = self._node_offset(map_name)
-            self.pr = Pilot(self.cfg)
+            self.pr = NavigationCommandFilter(self.cfg)
             if not was_paused:
                 self.pr.resume()
         else:
@@ -119,7 +119,7 @@ class DualNav:
             self.front_node_offset = int(result.pop("_node_offset", self.front_node_offset))
             if result.pop("_map_switched", False):
                 was_paused = self.pf.paused
-                self.pf = Pilot(self.cfg)
+                self.pf = NavigationCommandFilter(self.cfg)
                 if not was_paused:
                     self.pf.resume()
             return self.front_map, self.front_node_offset
@@ -127,7 +127,7 @@ class DualNav:
         self.rear_node_offset = int(result.pop("_node_offset", self.rear_node_offset))
         if result.pop("_map_switched", False):
             was_paused = self.pr.paused
-            self.pr = Pilot(self.cfg)
+            self.pr = NavigationCommandFilter(self.cfg)
             if not was_paused:
                 self.pr.resume()
         return self.rear_map, self.rear_node_offset

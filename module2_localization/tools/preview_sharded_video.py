@@ -15,10 +15,10 @@ import cv2
 import numpy as np
 
 from .. import config
-from ..core.pilot import Pilot
+from ..core.command_filter import NavigationCommandFilter
 from ..frame_guard import FrameTimeoutGuard
 from ..service import DirectionController, RouteProfileController, TrafficBranch
-from ..services.localization_service import build_runtime_localizer
+from ..services.localizer_factory import create_runtime_localizer
 
 MAP_SIZE = 720
 VIDEO_WIDTH = 1280
@@ -113,7 +113,7 @@ def main() -> int:
     if back_facing is None:
         back_facing = "rear" in args.map.lower()
     print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
-    localizer = build_runtime_localizer(
+    localizer = create_runtime_localizer(
         args.map, back_facing,
         min_shard_index=min_shard_index,
         max_shard_index=max_shard_index,
@@ -123,7 +123,7 @@ def main() -> int:
     relocate = getattr(localizer, "force_relocate", None)
     if relocate is not None:
         relocate()
-    pilot = Pilot(config)
+    pilot = NavigationCommandFilter(config)
     pilot.resume()
     direction = DirectionController(config, enabled=args.direction)
     route_profile = RouteProfileController(config, terminal_maneuvers=args.terminal_maneuvers)
@@ -196,7 +196,7 @@ def main() -> int:
         switched = bool(result.pop("_map_switched", False))
         if switched:
             was_paused = pilot.paused
-            pilot = Pilot(config)
+            pilot = NavigationCommandFilter(config)
             if not was_paused:
                 pilot.resume()
             active_map = map_name

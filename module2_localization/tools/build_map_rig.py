@@ -68,10 +68,10 @@ def main():
     args = ap.parse_args()
 
     sys.path.insert(0, str(ROOT / "core"))
-    from hub import use_local_weights
+    from model_weights import configure_local_model_weights
     from lightglue import ALIKED, LightGlue
     from lightglue.utils import load_image
-    use_local_weights()
+    configure_local_model_weights()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     videos = [(ROOT / v if not Path(v).is_absolute() else Path(v)) for v in args.videos]
