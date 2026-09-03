@@ -12,9 +12,7 @@ class NatsClient:
             logger.warning("NATS: Соединение разорвано! Пытаюсь переподключиться...")
 
         async def reconnected_cb():
-            logger.success(
-                f"NATS: Успешное переподключение к {self.nc.connected_url.netloc}"
-            )
+            logger.success(f"NATS: Успешное переподключение к {self.nc.connected_url.netloc}")
 
         async def error_cb(e):
             logger.error(f"NATS ошибка: {e}")

@@ -8,12 +8,46 @@ from pathlib import Path
 
 import numpy as np
 
+NAVIGATION_CONFIG_FIELDS = (
+    "MIN_INLIERS",
+    "SHARD_RECOVERY_MIN_INLIERS",
+    "MIN_PAIRS",
+    "MAX_ERROR",
+    "QUERY_KPTS",
+    "QUERY_DET_THRESHOLD",
+    "QUERY_NMS_RADIUS",
+    "MATCH_RATIO",
+    "MATCH_TOPK",
+    "FOCAL_FALLBACK",
+    "POSE_HISTORY",
+    "MAX_NODES_PER_SEC",
+    "MIN_NODE_JUMP",
+    "MAX_REJECTS",
+    "SHARD_PRELOAD_NODES",
+    "SHARD_CONFIRM_FIXES",
+    "SHARD_FULL_RECOVERY",
+    "SHARD_SWITCH_POLICIES",
+    "LOOKAHEAD_NODES",
+    "LOOKAHEAD_MIN",
+    "LOOKAHEAD_ADAPT",
+    "LOOKAHEAD_SPEED_DIV",
+    "LOOKAHEAD_MAX",
+    "DEADZONE_DEG",
+    "NAV_LAG_S",
+    "NAV_LAG_ADAPTIVE",
+    "NAV_LEAD_MAX",
+    "NAV_WIN_NODES",
+    "FRAME_TIMEOUT_CHECK_ENABLED",
+    "FRAME_TIMEOUT_S",
+    "FRAME_TIMEOUT_RECOVERY_FRAMES",
+)
+
 
 class NavigationLog:
     DEFAULT_MAX_BYTES = 150 * 1024 * 1024
 
     def __init__(self, root=None, max_bytes=None):
-        project_root = Path(__file__).resolve().parents[1]
+        project_root = Path(__file__).resolve().parents[2]
         self.root = Path(root) if root is not None else project_root / "logs"
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = int(max_bytes if max_bytes is not None else self.DEFAULT_MAX_BYTES)
@@ -132,3 +166,11 @@ def frame_metrics(frame):
         channels = sample.reshape(-1, sample.shape[2]).mean(axis=0)
         result["channel_mean"] = [round(float(value), 3) for value in channels]
     return result
+
+
+def log_runtime_start(navlog, arguments, config):
+    navlog.emit("arguments", arguments=vars(arguments))
+    navlog.emit(
+        "navigation_config",
+        values={name: getattr(config, name, None) for name in NAVIGATION_CONFIG_FIELDS},
+    )

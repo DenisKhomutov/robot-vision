@@ -16,8 +16,9 @@ import numpy as np
 
 from .. import config
 from ..core.command_filter import NavigationCommandFilter
-from ..frame_guard import FrameTimeoutGuard
-from ..service import DirectionController, RouteProfileController, TrafficBranch
+from ..runtime.frame_timeout import FrameTimeoutGuard
+from ..runtime.motion_controllers import DirectionController, RouteProfileController
+from ..runtime.traffic_controller import TrafficBranch
 from ..services.localizer_factory import create_runtime_localizer
 
 MAP_SIZE = 720

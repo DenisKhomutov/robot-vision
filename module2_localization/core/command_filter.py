@@ -3,6 +3,8 @@ from collections import deque
 
 import numpy as np
 
+from ..runtime.diagnostics import command_filter_diagnostics
+
 
 def to_command(r, min_inliers):
     if not r or not r.get("ok") or r.get("inliers", 0) < min_inliers:
@@ -53,21 +55,7 @@ class NavigationCommandFilter:
         self.rejects = 0
 
     def diagnostics(self, now=None):
-        now = time.monotonic() if now is None else now
-        return {
-            "paused": bool(self.paused),
-            "accepted": bool(self.accepted),
-            "stopped": bool(self.stopped),
-            "stop_hits": int(self.stop_hits),
-            "moved_once": bool(self.moved_once),
-            "last_node": None if self.last_node is None else int(self.last_node),
-            "last_fix_age_s": None if self.last_fix_t is None else float(max(0.0, now - self.last_fix_t)),
-            "jump_rejection": self.jump,
-            "consecutive_jump_rejects": int(self.rejects),
-            "node_history": [int(value) for value in self.nhist],
-            "position_history": [np.asarray(value).tolist() for value in self.chist],
-            "last_steering": {"move_type": self.last_cmd[0], "bearing_deg": float(self.last_cmd[1])},
-        }
+        return command_filter_diagnostics(self, now)
 
     def step(self, r, now=None):
         cfg = self.cfg
@@ -93,9 +81,6 @@ class NavigationCommandFilter:
             self.nhist.append(r["node"])
             d = (self.chist[-1] - self.chist[0]) if len(self.chist) >= 2 else np.zeros(3)
 
-
-
-
             node_progress = len(self.nhist) >= 2 and len(set(self.nhist)) > 1
             if float(np.linalg.norm(d)) > cfg.MOVE_EPS or node_progress:
                 self.moved_once = True
@@ -115,13 +100,20 @@ class NavigationCommandFilter:
         if self.accepted:
             self.last_good = cmd
         elif self.last_good:
-            cmd = {"move_type": "lost", "node": self.last_good["node"],
-                   "reason": self.jump or cmd["reason"], "inliers": cmd.get("inliers", 0)}
+            cmd = {
+                "move_type": "lost",
+                "node": self.last_good["node"],
+                "reason": self.jump or cmd["reason"],
+                "inliers": cmd.get("inliers", 0),
+            }
         if self.stopped:
-            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
-                   "reason": "route_complete"}
+            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"), "reason": "route_complete"}
         if self.paused:
-            cmd = {"move_type": "stop", "node": (self.last_good or {}).get("node"),
-                   "reason": "operator_paused", "paused": True}
+            cmd = {
+                "move_type": "stop",
+                "node": (self.last_good or {}).get("node"),
+                "reason": "operator_paused",
+                "paused": True,
+            }
         cmd["ts"] = round(time.time(), 3)
         return cmd

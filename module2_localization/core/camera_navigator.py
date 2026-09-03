@@ -1,9 +1,11 @@
+from ..runtime.diagnostics import camera_navigator_diagnostics
 from .command_filter import NavigationCommandFilter
 
 
 class CameraNavigator:
-    def __init__(self, front_loc, rear_loc, cfg, front_map=None, rear_map=None,
-                 route=None, front_route=None, rear_route=None):
+    def __init__(
+        self, front_loc, rear_loc, cfg, front_map=None, rear_map=None, route=None, front_route=None, rear_route=None
+    ):
         self.front, self.rear, self.cfg = front_loc, rear_loc, cfg
         self.pf, self.pr = NavigationCommandFilter(cfg), NavigationCommandFilter(cfg)
         self.mode = getattr(cfg, "NAV_MODE", "rear")
@@ -16,8 +18,6 @@ class CameraNavigator:
         self.route = route
         self.loading_route = None
         self.route_started = False
-
-
 
         self.front_route = front_route if front_loc is not None else None
         self.rear_route = rear_route if rear_loc is not None else None
@@ -70,6 +70,7 @@ class CameraNavigator:
             return 0
         import json
         from pathlib import Path
+
         path = Path(self.cfg.MAPS_DIR) / map_name / "shard.json"
         if not path.exists():
             return 0
@@ -153,21 +154,7 @@ class CameraNavigator:
                 relocate()
 
     def diagnostics(self):
-        return {
-            "route": self.route,
-            "loading_route": self.loading_route,
-            "route_started": bool(self.route_started),
-            "mode": self.mode,
-            "active_camera": self.active,
-            "front_map": self.front_map,
-            "rear_map": self.rear_map,
-            "front_node_offset": int(self.front_node_offset),
-            "rear_node_offset": int(self.rear_node_offset),
-            "front_lost_count": int(self.front_lost),
-            "front_good_count": int(self.front_good),
-            "front_pilot": self.pf.diagnostics(),
-            "rear_pilot": self.pr.diagnostics(),
-        }
+        return camera_navigator_diagnostics(self)
 
     def has_camera(self, camera):
         return (self.front if camera == "front" else self.rear) is not None
@@ -184,41 +171,31 @@ class CameraNavigator:
         self.front_lost = self.front_good = 0
         return True
 
-    def _front_only(self, ff):
-        if self.front is None:
-            return {"move_type": "stop", "reason": "нет карты передней камеры", "cam": "front"}
-        if self.pf.paused:
-
-
-            cmd = self.pf.step(None)
-            return self._map_fields(cmd, "front", self.front_map, self.front_node_offset)
-        result = self.front.locate(ff)
+    def _single_camera(self, camera, frame):
+        localizer = self.front if camera == "front" else self.rear
+        pilot = self.pf if camera == "front" else self.pr
+        map_name = self.front_map if camera == "front" else self.rear_map
+        offset = self.front_node_offset if camera == "front" else self.rear_node_offset
+        if localizer is None:
+            label = "передней" if camera == "front" else "задней"
+            return {"move_type": "stop", "reason": f"нет карты {label} камеры", "cam": camera}
+        if pilot.paused:
+            return self._map_fields(pilot.step(None), camera, map_name, offset)
+        result = localizer.locate(frame)
         recovery = bool(result.get("_full_map_recovery"))
         recovery_map = result.get("_recovery_map")
-        map_name, offset = self._dynamic_context("front", result)
-        cmd = self.pf.step(result)
-        cmd = self._map_fields(cmd, "front", map_name, offset)
+        map_name, offset = self._dynamic_context(camera, result)
+        cmd = self._map_fields(pilot.step(result), camera, map_name, offset)
         if recovery:
             cmd["full_map_recovery"] = True
             cmd["recovery_map"] = recovery_map
         return cmd
 
-    def _rear(self, rf):
-        if self.rear is None:
-            return {"move_type": "stop", "reason": "нет карты задней камеры", "cam": "rear"}
-        if self.pr.paused:
-            cmd = self.pr.step(None)
-            return self._map_fields(cmd, "rear", self.rear_map, self.rear_node_offset)
-        result = self.rear.locate(rf)
-        recovery = bool(result.get("_full_map_recovery"))
-        recovery_map = result.get("_recovery_map")
-        map_name, offset = self._dynamic_context("rear", result)
-        cmd = self.pr.step(result)
-        cmd = self._map_fields(cmd, "rear", map_name, offset)
-        if recovery:
-            cmd["full_map_recovery"] = True
-            cmd["recovery_map"] = recovery_map
-        return cmd
+    def _front_only(self, frame):
+        return self._single_camera("front", frame)
+
+    def _rear(self, frame):
+        return self._single_camera("rear", frame)
 
     def _maps_compatible(self):
         return self.front_route is None or self.rear_route is None or self.front_route == self.rear_route
@@ -249,8 +226,11 @@ class CameraNavigator:
                 cmd["route_loaded"] = True
             return cmd
         if self.mode == "front":
-            cmd = self._front_only(front_frame) if front_frame is not None else \
-                {"move_type": "stop", "reason": "нет кадра передней камеры", "cam": "front"}
+            cmd = (
+                self._front_only(front_frame)
+                if front_frame is not None
+                else {"move_type": "stop", "reason": "нет кадра передней камеры", "cam": "front"}
+            )
             cmd["mode"] = "front"
             cmd["route"] = self.route
             return cmd
@@ -284,11 +264,13 @@ class CameraNavigator:
                 cmd["full_map_recovery"] = True
                 cmd["recovery_map"] = front_recovery_map
         elif not self._maps_compatible():
-
-
-
-            cmd = {"move_type": "stop", "cam": "front", "map": self.front_map,
-                   "reason": "front/rear maps belong to different routes", "map_mismatch": True}
+            cmd = {
+                "move_type": "stop",
+                "cam": "front",
+                "map": self.front_map,
+                "reason": "front/rear maps belong to different routes",
+                "map_mismatch": True,
+            }
         else:
             cmd = self._rear(rear_frame)
         cmd["mode"] = "dual"

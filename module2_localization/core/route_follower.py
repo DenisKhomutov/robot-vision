@@ -1,5 +1,5 @@
 import numpy as np
-from PIL import Image, ExifTags
+from PIL import ExifTags, Image
 
 LOOKAHEAD_NODES = 12
 DEADZONE_DEG = 4.0
@@ -7,7 +7,6 @@ STANLEY_K = 1.0
 LOOKAHEAD_MIN = 5
 LOOKAHEAD_ADAPT = 8.0
 STOP_END_NODES = 3
-
 
 
 _speed_pwm = None
@@ -19,7 +18,6 @@ def set_speed_pwm(value):
 
 
 class RouteFollower:
-
     @staticmethod
     def focal_from_exif(path, width):
         try:
@@ -57,8 +55,7 @@ class RouteFollower:
         if mode == "stanley":
             j = min(k + lookahead_nodes, len(self.route) - 1)
             t_flat = t - np.dot(t, down) * down
-            psi = np.degrees(np.arctan2(np.dot(np.cross(f_flat, t_flat), down),
-                                        np.dot(f_flat, t_flat)))
+            psi = np.degrees(np.arctan2(np.dot(np.cross(f_flat, t_flat), down), np.dot(f_flat, t_flat)))
             ang = psi + np.degrees(np.arctan(-stanley_k * e))
         else:
             step = getattr(self, "node_step", 1.0)
@@ -72,11 +69,16 @@ class RouteFollower:
                 j = min(k + int(lookahead_nodes), len(self.route) - 1)
             to = self.route[j] - C
             to_flat = to - np.dot(to, down) * down
-            ang = np.degrees(np.arctan2(np.dot(np.cross(f_flat, to_flat), down),
-                                        np.dot(f_flat, to_flat)))
+            ang = np.degrees(np.arctan2(np.dot(np.cross(f_flat, to_flat), down), np.dot(f_flat, to_flat)))
         dz = getattr(self, "deadzone", None) or DEADZONE_DEG
         mt = "straight" if abs(ang) < dz else ("right" if ang > 0 else "left")
         if k >= len(self.route) - 1 - getattr(self, "stop_end_nodes", STOP_END_NODES):
             mt, ang = "stop", 0.0
-        return {"node": k, "target_node": j, "dist_to_route": float(d[k]),
-                "offset": e, "bearing_deg": float(ang), "move_type": mt}
+        return {
+            "node": k,
+            "target_node": j,
+            "dist_to_route": float(d[k]),
+            "offset": e,
+            "bearing_deg": float(ang),
+            "move_type": mt,
+        }

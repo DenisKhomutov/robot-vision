@@ -6,7 +6,9 @@ import numpy as np
 from module2_localization.core.camera_navigator import CameraNavigator
 from module2_localization.core.command_filter import NavigationCommandFilter, to_command
 from module2_localization.core.route_follower import RouteFollower
-from module2_localization.frame_guard import FrameTimeoutGuard
+from module2_localization.runtime.frame_timeout import FrameTimeoutGuard
+from module2_localization.runtime.motion_controllers import DirectionController, RouteProfileController
+from module2_localization.runtime.traffic_controller import TrafficBranch
 
 
 def pilot_config(**overrides):
@@ -126,6 +128,54 @@ class NavigationCoordinatorTests(unittest.TestCase):
         self.assertEqual(command["move_type"], "stop")
         self.assertEqual(command["reason"], "route_not_selected")
         self.assertEqual(command["mode"], "idle")
+
+
+class RuntimeControllerTests(unittest.TestCase):
+    def test_backward_left_guard_changes_only_left_to_right(self):
+        cfg = SimpleNamespace(
+            BACKWARD_ZONES={"map": ((0, 26),)},
+            BACKWARD_LEFT_BLOCK_ZONES={"map": ((0, 26),)},
+            STEERING_OUTLIER_GUARDS={},
+            DEADZONE_DEG=4.0,
+        )
+        controller = DirectionController(cfg, enabled=True)
+        command = {"map": "map", "global_node": 10, "move_type": "left", "deg": -7.0}
+        controller.process(command)
+        self.assertEqual(command["direction"], "backward")
+        self.assertEqual(command["move_type"], "right")
+        self.assertEqual(command["deg"], 173.0)
+
+    def test_route_profile_latches_route_complete(self):
+        cfg = SimpleNamespace(
+            ROUTE_21_TERMINAL_MANEUVERS_DEFAULT=False,
+            ROUTE_21_NO_MANEUVERS_MIN_NODE=27,
+            ROUTE_21_NO_MANEUVERS_STOP_NODE=1595,
+        )
+        controller = RouteProfileController(cfg)
+        command = {"route": "2-1", "global_node": 1595, "move_type": "left", "deg": -10.0}
+        controller.process(command)
+        self.assertEqual(command["move_type"], "stop")
+        self.assertEqual(command["reason"], "route_complete")
+        next_command = {"route": "2-1", "global_node": None, "move_type": "lost"}
+        controller.process(next_command)
+        self.assertEqual(next_command["reason"], "route_complete")
+
+    def test_traffic_requires_red_before_green_and_latches_go(self):
+        branch = TrafficBranch.__new__(TrafficBranch)
+        branch.state = "WAIT_RED"
+        branch.completed = False
+        branch.last_map = None
+        branch.last_node = None
+        signals = iter(("green", "red", "green"))
+        branch._analyze = lambda image: {"signal": next(signals)}
+        frame = np.zeros((2, 2, 3), dtype=np.uint8)
+        branch.update(True, frame)
+        self.assertEqual(branch.state, "WAIT_RED")
+        branch.update(True, frame)
+        self.assertEqual(branch.state, "WAIT_GREEN")
+        branch.update(True, frame)
+        self.assertEqual(branch.state, "GO")
+        self.assertTrue(branch.go)
 
 
 if __name__ == "__main__":
