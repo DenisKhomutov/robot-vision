@@ -411,7 +411,7 @@
 Упреждение вычисляется так:
 
 ```text
-base_nodes = clamp(speed_pwm / 10, 4, 20)
+base_nodes = clamp(speed_pwm / 13, 4, 20)
 effective_nodes = max(base_nodes - 30 × abs(offset), 4)
 ```
 

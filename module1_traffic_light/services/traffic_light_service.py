@@ -18,7 +18,12 @@ def analyze(image: Image.Image) -> dict[str, Any]:
     boxes = get_detector().detect(image)
 
     if not boxes:
-        return {"status": "no_traffic_light", "signal": None, "confidence": None, "box": None}
+        return {
+            "status": "no_traffic_light", 
+            "signal": None, 
+            "confidence": None, 
+            "box": None
+        }
 
     box = max(boxes, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))
     crop = image.crop(box)
@@ -27,6 +32,16 @@ def analyze(image: Image.Image) -> dict[str, Any]:
         _save_crop(crop, label)
 
     if label == config.UNKNOWN_LABEL or conf < config.CLS_CONF:
-        return {"status": "light_unclassified", "signal": None, "confidence": round(conf, 4), "box": box}
+        return {
+            "status": "light_unclassified", 
+            "signal": None, 
+            "confidence": round(conf, 4), 
+            "box": box
+        }
 
-    return {"status": "light_classified", "signal": label, "confidence": round(conf, 4), "box": box}
+    return {
+        "status": "light_classified", 
+        "signal": label, 
+        "confidence": round(conf, 4), 
+        "box": box
+    }

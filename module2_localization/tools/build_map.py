@@ -1,4 +1,5 @@
 import argparse
+import json
 import shutil
 import sqlite3
 import subprocess
@@ -124,6 +125,9 @@ def main():
     ap.add_argument("--calib", default=None,
                     help="npz с калибровкой (K, dist, image_size) -> камера OPENCV, интринсики "
                          "ФИКСИРУЮТСЯ в BA (не уточняются)")
+    ap.add_argument("--camera-json", default=None,
+                    help="JSON с model_id, image_size и colmap_params; позволяет перенести "
+                         "проверенную FULL_OPENCV-камеру до геометрической проверки")
     ap.add_argument("--masks", default=None,
                     help="папка масок (data/<...>): точки внутри маски (255) отбрасываются, "
                          "картинка не трогается — без ложных точек на кромке заливки")
@@ -132,11 +136,13 @@ def main():
                     help="подготовить database.db с ALIKED/LightGlue и геометрической проверкой, "
                          "но не запускать mapper")
     args = ap.parse_args()
+    if args.calib and args.camera_json:
+        ap.error("--calib и --camera-json взаимоисключающие")
 
     sys.path.insert(0, str(ROOT / "core"))
-    from model_weights import configure_local_model_weights
     from lightglue import ALIKED, LightGlue
     from lightglue.utils import load_image
+    from model_weights import configure_local_model_weights
     configure_local_model_weights()
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
@@ -235,7 +241,24 @@ def main():
     subprocess.run(["colmap", "database_creator", "--database_path", str(db_path)],
                    stdout=subprocess.DEVNULL, check=True)
     db = sqlite3.connect(str(db_path))
-    if args.calib:
+    if args.camera_json:
+        camera_data = json.loads(Path(args.camera_json).read_text())
+        model_id = int(camera_data["model_id"])
+        model_name = str(camera_data["model"])
+        cw, ch = (int(value) for value in camera_data["image_size"])
+        values = np.asarray(camera_data["colmap_params"], dtype=np.float64)
+        expected = len(camera_data["colmap_params_order"])
+        if len(values) != expected:
+            raise ValueError(f"камера {model_name}: параметров {len(values)}, ожидалось {expected}")
+        if pycolmap.CameraModelId(model_id).name != model_name:
+            raise ValueError(f"model_id={model_id} не соответствует модели {model_name}")
+        if (cw, ch) != (w, h):
+            raise ValueError(f"камера {model_name}: размер {cw}x{ch}, изображения {w}x{h}")
+        db.execute("INSERT INTO cameras VALUES (?,?,?,?,?,?)",
+                   (1, model_id, w, h, values.tobytes(), 1))
+        log(f"--- камера из JSON: {model_name}, fx={values[0]:.0f} fy={values[1]:.0f} "
+            f"cx={values[2]:.0f} cy={values[3]:.0f} (фиксируется в BA)")
+    elif args.calib:
         cal = np.load(args.calib)
         K = cal["K"]
         dd = cal["dist"].ravel()

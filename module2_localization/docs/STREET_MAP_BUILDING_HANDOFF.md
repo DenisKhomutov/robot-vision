@@ -504,7 +504,7 @@ module2_localization/maps/MAP_NAME/
 
 ### FULL_OPENCV
 
-`tools/export_map.py` поддерживает `FULL_OPENCV`: в `runtime.npz` сохраняются все
+`module2_localization/tools/export_map.py` поддерживает `FULL_OPENCV`: в `runtime.npz` сохраняются все
 восемь коэффициентов rational distortion в порядке OpenCV
 `k1,k2,p1,p2,k3,k4,k5,k6`. `cv2.solvePnPRansac` и `solvePnPRefineLM` принимают
 этот вектор напрямую. Нельзя молча отбросить `k3..k6` или переименовать камеру в

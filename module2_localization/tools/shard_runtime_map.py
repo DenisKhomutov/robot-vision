@@ -41,14 +41,13 @@ def balanced_edges(weight_per_node: np.ndarray, parts: int) -> np.ndarray:
         return np.linspace(0, len(weight_per_node), parts + 1, dtype=int)
     targets = np.linspace(0, total, parts + 1)
     edges = np.searchsorted(cum, targets, side="left")
-    edges = np.clip(edges, 0, len(weight_per_node))
-    edges[0], edges[-1] = 0, len(weight_per_node)
-
-
-    for i in range(1, len(edges)):
-        if edges[i] <= edges[i - 1]:
-            edges[i] = edges[i - 1] + 1
-    edges[-1] = len(weight_per_node)
+    node_count = len(weight_per_node)
+    min_core_nodes = min(25, node_count // parts)
+    edges[0], edges[-1] = 0, node_count
+    for i in range(1, parts):
+        minimum = edges[i - 1] + min_core_nodes
+        maximum = node_count - (parts - i) * min_core_nodes
+        edges[i] = np.clip(edges[i], minimum, maximum)
     return edges
 
 
@@ -137,6 +136,7 @@ def main() -> int:
     else:
         edges = np.linspace(0, len(names), args.parts + 1, dtype=int)
     prefix = args.prefix or f"{args.map}_shard"
+    separator = "" if prefix.endswith("/") else "_"
     created: list[dict[str, object]] = []
     for index in range(args.parts):
         core_start, core_stop = int(edges[index]), int(edges[index + 1])
@@ -157,7 +157,7 @@ def main() -> int:
         descriptor_keep = point_keep[owner]
         shard_owner = remap[owner[descriptor_keep]].astype(np.int32)
 
-        name = f"{prefix}_{index + 1:02d}_of_{args.parts:02d}"
+        name = f"{prefix}{separator}{index + 1:02d}_of_{args.parts:02d}"
         output = maps / name
         if output.exists():
             if not args.overwrite:
@@ -211,7 +211,7 @@ def main() -> int:
             descriptor_keep.sum(),
         )
 
-    manifest = maps / f"{prefix}_manifest.json"
+    manifest = maps / prefix / "manifest.json" if prefix.endswith("/") else maps / f"{prefix}_manifest.json"
     manifest.write_text(json.dumps({"source_map": args.map, "shards": created}, ensure_ascii=False, indent=2) + "\n")
     LOGGER.info("manifest: %s", manifest)
     return 0

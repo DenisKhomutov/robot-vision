@@ -14,6 +14,7 @@ def main() -> int:
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--max-shared", type=int)
     args = parser.parse_args()
     if args.output.exists() and any(args.output.iterdir()):
         raise SystemExit(f"output is not empty: {args.output}")
@@ -29,6 +30,10 @@ def main() -> int:
         for image in reconstruction.images.values()
     }
     names = sorted(reference_centers.keys() & input_centers.keys())
+    if args.max_shared is not None:
+        if args.max_shared < 3:
+            raise SystemExit("--max-shared must be at least 3")
+        names = names[:args.max_shared]
     if len(names) < 3:
         raise SystemExit(f"only {len(names)} shared images")
 

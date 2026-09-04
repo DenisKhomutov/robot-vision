@@ -16,7 +16,8 @@ class TrafficLightDetector:
             image, 
             conf=config.DET_CONF, 
             imgsz = config.DET_IMGSZ, 
-            verbose=False)
+            verbose=False
+            )
         
         boxes = results[0].boxes
 
