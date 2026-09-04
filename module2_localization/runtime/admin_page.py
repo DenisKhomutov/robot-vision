@@ -65,6 +65,11 @@ select{
   background:var(--panel2);color:var(--text);font-size:.9rem;margin-bottom:8px
 }
 .log-meta{font-size:.78rem;color:var(--muted);margin:2px 0 8px;min-height:1.2em}
+.route-catalog{display:none;margin:8px 0;padding:10px;border:1px solid var(--border);border-radius:8px;background:#11151b}
+.route-catalog.visible{display:block}
+.route-catalog div{padding:5px 0;border-bottom:1px solid var(--border);font-size:.86rem}
+.route-catalog div:last-child{border-bottom:0}
+.route-catalog code{color:#9db8ff;margin-right:7px}
 label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
 #message{min-height:1.4em;color:var(--yellow);font-size:.85rem;margin-top:8px}
@@ -161,6 +166,8 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
         <button class="toggle profile-gated" id="btnManeuversOn" data-cmd="set_terminal_maneuvers" data-enabled="true">ВКЛ</button>
         <button class="toggle profile-gated" id="btnManeuversOff" data-cmd="set_terminal_maneuvers" data-enabled="false">БЕЗ МАНЁВРОВ</button>
       </div>
+      <button class="ghost" id="showRoutes" style="width:100%;margin-bottom:8px">ДОСТУПНЫЕ МАРШРУТЫ</button>
+      <div id="routeCatalog" class="route-catalog"></div>
       <select id="routeSelect" class="gated"></select>
       <button id="setRoute" class="gated" style="width:100%">ВЫБРАТЬ МАРШРУТ</button>
       <button class="stop gated" data-cmd="clear_route" style="width:100%;margin-top:8px">СТОЯНКА / ВЫГРУЗИТЬ КАРТУ</button>
@@ -236,6 +243,27 @@ function fillRoutes(){
     sel.appendChild(o);
   }
   if([...sel.options].some(o=>o.value===old))sel.value=old;
+}
+
+function showRouteCatalog(){
+  let panel=$('#routeCatalog');
+  if(panel.classList.contains('visible')){
+    panel.classList.remove('visible');
+    $('#showRoutes').textContent='ДОСТУПНЫЕ МАРШРУТЫ';
+    return;
+  }
+  panel.innerHTML='';
+  for(let key in routes){
+    let row=document.createElement('div');
+    let code=document.createElement('code');
+    code.textContent=key;
+    row.appendChild(code);
+    row.appendChild(document.createTextNode(routes[key]));
+    panel.appendChild(row);
+  }
+  if(!Object.keys(routes).length)panel.textContent='Список маршрутов не загружен';
+  panel.classList.add('visible');
+  $('#showRoutes').textContent='СКРЫТЬ МАРШРУТЫ';
 }
 
 function setBadge(el,text,cls){el.textContent=text;el.className='badge '+cls}
@@ -356,6 +384,7 @@ document.querySelectorAll('button[data-cmd]').forEach(b=>b.onclick=()=>{
   send(body);
 });
 $('#setRoute').onclick=()=>send({cmd:'set_route',route:$('#routeSelect').value});
+$('#showRoutes').onclick=showRouteCatalog;
 $('#logSelect').onchange=updateLogMeta;
 $('#refreshLogs').onclick=loadLogs;
 $('#downloadLog').onclick=()=>{

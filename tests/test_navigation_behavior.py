@@ -6,6 +6,7 @@ import numpy as np
 from module2_localization.core.camera_navigator import CameraNavigator
 from module2_localization.core.command_filter import NavigationCommandFilter, to_command
 from module2_localization.core.route_follower import RouteFollower
+from module2_localization.runtime.admin_page import HTML
 from module2_localization.runtime.frame_timeout import FrameTimeoutGuard
 from module2_localization.runtime.motion_controllers import DirectionController, RouteProfileController
 from module2_localization.runtime.traffic_controller import TrafficBranch
@@ -42,6 +43,13 @@ def localization_result(node=1, move_type="straight", bearing_deg=0.0, inliers=3
         "C": np.array([float(node), 0.0, 0.0]),
         "fwd": np.array([1.0, 0.0, 0.0]),
     }
+
+
+class AdminPageTests(unittest.TestCase):
+    def test_route_catalog_is_available_without_telemetry_gate(self):
+        self.assertIn('id="showRoutes"', HTML)
+        self.assertIn('id="routeCatalog"', HTML)
+        self.assertNotIn('id="showRoutes" class="gated"', HTML)
 
 
 class CommandConversionTests(unittest.TestCase):
