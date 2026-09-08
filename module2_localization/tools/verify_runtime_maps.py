@@ -148,6 +148,7 @@ def validate_route(audit: Audit, maps: Path, route: str) -> None:
                   f"{route}: папки не совпадают с manifest; нет={sorted(expected_dirs-actual_dirs)}, лишние={sorted(actual_dirs-expected_dirs)}")
     previous_core_stop = None
     previous_global_stop = None
+    previous_visual_stop = None
     for index, item in enumerate(shards):
         prefix = f"{route}[{index + 1}/{len(shards)}]"
         audit.require(isinstance(item, dict), f"{prefix}: запись manifest не object")
@@ -177,6 +178,8 @@ def validate_route(audit: Audit, maps: Path, route: str) -> None:
         core_stop = int(item.get("core_global_stop_exclusive", -1))
         local_start = int(item.get("local_core_start", -1))
         local_stop = int(item.get("local_core_stop_exclusive", -1))
+        visual_start = int(item.get("visual_global_start", start))
+        visual_stop = int(item.get("visual_global_stop_exclusive", stop))
         audit.require(0 <= start <= core_start < core_stop <= stop, f"{prefix}: неверные диапазоны")
         audit.require(local_start == core_start - start and local_stop == core_stop - start,
                       f"{prefix}: неверные локальные core-границы")
@@ -187,9 +190,11 @@ def validate_route(audit: Audit, maps: Path, route: str) -> None:
         if previous_core_stop is not None:
             audit.require(core_start == previous_core_stop,
                           f"{prefix}: разрыв/наложение core: {previous_core_stop} -> {core_start}")
-            audit.require(start < int(previous_global_stop), f"{prefix}: нет перекрытия с предыдущим шардом")
+            audit.require(visual_start < int(previous_visual_stop),
+                          f"{prefix}: нет визуального перекрытия с предыдущим шардом")
         previous_core_stop = core_stop
         previous_global_stop = stop
+        previous_visual_stop = visual_stop
         if source_pair is not None:
             full_runtime, _ = source_pair
             full_names = full_runtime["names"]

@@ -12,11 +12,25 @@ SHARD_FULL_RECOVERY = True
 
 SHARD_RECOVERY_MIN_INLIERS = 20
 SHARD_SWITCH_POLICIES = {
+    "2-1-short/front_shard/01_of_15": {
+        "switch_global_start": 35,
+        "max_progress_step": 6,
+        "confirm_fixes": 2,
+        "min_candidate_inliers": 20,
+        "max_node_disagreement": 6,
+    },
     "2-1/front_shard/24_of_25": {
         "switch_global_start": 1596,
         "max_progress_step": 4,
         "confirm_fixes": 3,
         "min_candidate_inliers": 35,
+        "max_node_disagreement": 6,
+    },
+    "2-1-short/front_shard/14_of_15": {
+        "switch_global_start": 939,
+        "max_progress_step": 4,
+        "confirm_fixes": 2,
+        "min_candidate_inliers": 20,
         "max_node_disagreement": 6,
     },
 }
@@ -54,7 +68,7 @@ LOOKAHEAD_NODES = 5
 LOOKAHEAD_MIN = 4
 LOOKAHEAD_ADAPT = 30.0
 
-LOOKAHEAD_SPEED_DIV = 13.0
+LOOKAHEAD_SPEED_DIV = 45.0
 LOOKAHEAD_MAX = 20.0
 NATS_SPEED_TOPIC = "gateway.robot.speed"
 DEADZONE_DEG = 5.5
@@ -81,22 +95,18 @@ ROUTES = {
             "front_map": "1-2/front_shard/01_of_25", "rear_map": None},
     "1-2-short": {"label": "Маршрут 1-2 short", "camera": "front",
                    "front_map": "1-2-short/front_shard/01_of_15", "rear_map": None},
-    "2": {"label": "Маршрут 2 (3)", "camera": "rear",
-          "front_map": None, "rear_map": "2/rear_shard/01_of_10"},
     "2-1": {"label": "Маршрут 2-1", "camera": "front",
             "front_map": "2-1/front_shard/01_of_25", "rear_map": None},
     "2-1-short": {"label": "Маршрут 2-1 short", "camera": "front",
                    "front_map": "2-1-short/front_shard/01_of_15", "rear_map": None},
-    "3-1": {"label": "Маршрут 3-1", "camera": "front",
-            "front_map": "3-1/front_shard/01_of_25", "rear_map": None},
     "office": {"label": "Маршрут офис", "camera": "front",
                "front_map": "office/front", "rear_map": "office/rear"},
 }
 
 DEFAULT_ROUTE = None
 FRONT_MAP = ROUTES["1-2"]["front_map"]
-REAR_MAP = ROUTES["2"]["rear_map"]
-DEFAULT_MAP = REAR_MAP
+REAR_MAP = None
+DEFAULT_MAP = FRONT_MAP
 FRONT_SHM_SOCKET = "/tmp/cam_front_raw"
 REAR_SHM_SOCKET = "/tmp/cam_raw"
 DUAL_LOST_HOLD = 3
@@ -108,7 +118,7 @@ ROUTE_2_TRAFFIC_ZONE = (410, 430)
 ROUTE_12_TRAFFIC_ZONE = (875, 886)
 ROUTE_12_SHORT_TRAFFIC_ZONE = (540, 560)
 ROUTE_21_TRAFFIC_ZONE = (710, 718)
-ROUTE_21_SHORT_TRAFFIC_ZONE = (250, 270)
+ROUTE_21_SHORT_TRAFFIC_ZONE = (236, 256)
 ROUTE_31_TRAFFIC_ZONE = (897, 901)
 TRAFFIC_ZONES = {
 
@@ -226,8 +236,8 @@ DIRECTION_ENABLED = True
 ROUTE_21_BACKWARD_START_ZONE = [(0, 26)]
 ROUTE_21_BACKWARD_END_ZONE = [(1596, 1632)]
 ROUTE_21_BACKWARD_ZONES = ROUTE_21_BACKWARD_START_ZONE + ROUTE_21_BACKWARD_END_ZONE
-ROUTE_21_SHORT_BACKWARD_START_ZONE = [(0, 49)]
-ROUTE_21_SHORT_BACKWARD_END_ZONE = [(918, 999)]
+ROUTE_21_SHORT_BACKWARD_START_ZONE = [(0, 35)]
+ROUTE_21_SHORT_BACKWARD_END_ZONE = [(940, 988)]
 ROUTE_21_SHORT_BACKWARD_ZONES = (
     ROUTE_21_SHORT_BACKWARD_START_ZONE + ROUTE_21_SHORT_BACKWARD_END_ZONE
 )
@@ -246,10 +256,6 @@ BACKWARD_ZONES = {
     "2-1/front_shard/25_of_25": ROUTE_21_BACKWARD_END_ZONE,
 
     "2-1-short/front_full": ROUTE_21_SHORT_BACKWARD_ZONES,
-    **{
-        f"2-1-short/front_shard/{index:02d}_of_15": ROUTE_21_SHORT_BACKWARD_ZONES
-        for index in range(1, 16)
-    },
 
 
 
@@ -280,15 +286,9 @@ BACKWARD_ZONES = {
     "3-1/front_shard/24_of_25": ROUTE_31_BACKWARD_ZONES,
     "3-1/front_shard/25_of_25": ROUTE_31_BACKWARD_ZONES,
 }
-BACKWARD_LEFT_BLOCK_ZONES = {
-    "2-1/front_full": ROUTE_21_BACKWARD_ZONES,
-    "2-1/front_shard/01_of_25": ROUTE_21_BACKWARD_START_ZONE,
-    "2-1/front_shard/25_of_25": ROUTE_21_BACKWARD_END_ZONE,
-    "2-1-short/front_full": ROUTE_21_SHORT_BACKWARD_ZONES,
-    **{
-        f"2-1-short/front_shard/{index:02d}_of_15": ROUTE_21_SHORT_BACKWARD_ZONES
-        for index in range(1, 16)
-    },
+BACKWARD_MAPS = {
+    "2-1-short/front_shard/01_of_15",
+    "2-1-short/front_shard/15_of_15",
 }
 STEERING_OUTLIER_GUARDS = {
     "2-1/front_shard/24_of_25": (

@@ -1,7 +1,7 @@
 class DirectionController:
     def __init__(self, cfg, enabled=False):
         self.zones = getattr(cfg, "BACKWARD_ZONES", {})
-        self.left_block_zones = getattr(cfg, "BACKWARD_LEFT_BLOCK_ZONES", {})
+        self.maps = set(getattr(cfg, "BACKWARD_MAPS", ()))
         self.steering_outlier_guards = getattr(cfg, "STEERING_OUTLIER_GUARDS", {})
         self.deadzone = getattr(cfg, "DEADZONE_DEG", 4.0)
         self.enabled = bool(enabled)
@@ -15,17 +15,15 @@ class DirectionController:
             return
         ranges = self.zones.get(cmd.get("map"))
         node = cmd.get("global_node", cmd.get("node"))
-        backward = bool(ranges and node is not None and any(a <= node <= b for a, b in ranges))
+        backward = cmd.get("map") in self.maps or bool(
+            ranges and node is not None and any(a <= node <= b for a, b in ranges)
+        )
         cmd["direction"] = "backward" if backward else "forward"
         if backward and cmd.get("deg") is not None and cmd.get("move_type") not in ("stop", "lost"):
-            deg = ((cmd["deg"] + 180.0 + 180.0) % 360.0) - 180.0
+            rear_axis_error = ((float(cmd["deg"]) - 180.0 + 180.0) % 360.0) - 180.0
+            deg = rear_axis_error
             cmd["deg"] = deg
             cmd["move_type"] = "straight" if abs(deg) < self.deadzone else ("right" if deg > 0 else "left")
-        blocked = self.left_block_zones.get(cmd.get("map"))
-        block_left = bool(blocked and node is not None and any(a <= node <= b for a, b in blocked))
-        if backward and block_left and cmd.get("move_type") == "left":
-            cmd["move_type"] = "right"
-            cmd["deg"] = abs(float(cmd.get("deg") or self.deadzone))
         guard = self.steering_outlier_guards.get(cmd.get("map"))
         if guard and node is not None and cmd.get("deg") is not None:
             (start, stop), max_deg = guard

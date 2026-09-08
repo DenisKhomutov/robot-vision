@@ -28,6 +28,10 @@ def parse_args() -> argparse.Namespace:
                         help="не использовать COLMAP-треки (sparse/0); резать только по ближайшему узлу")
     parser.add_argument("--balance", choices=["descriptors", "nodes"], default="descriptors",
                         help="границы шардов: равный вес по дескрипторам (по умолчанию) или равные отрезки маршрута")
+    parser.add_argument("--terminal-core-start", type=int, default=None,
+                        help="начало core последнего специализированного шарда")
+    parser.add_argument("--initial-core-stop", type=int, default=None,
+                        help="конец core первого специализированного шарда")
     return parser.parse_args()
 
 
@@ -127,7 +131,41 @@ def main() -> int:
         distance2 = ((block[:, None, :] - route[None, :, :]) ** 2).sum(axis=2)
         point_node[start : start + len(block)] = distance2.argmin(axis=1)
 
-    if args.balance == "descriptors":
+    initial = None if args.initial_core_stop is None else int(args.initial_core_stop)
+    terminal = None if args.terminal_core_start is None else int(args.terminal_core_start)
+    if initial is not None and not 0 < initial < len(names):
+        raise SystemExit("initial-core-stop должен быть внутри маршрута")
+    if terminal is not None and not 0 < terminal < len(names):
+        raise SystemExit("terminal-core-start должен быть внутри маршрута")
+    if initial is not None and terminal is not None and initial >= terminal:
+        raise SystemExit("initial-core-stop должен быть меньше terminal-core-start")
+    fixed_parts = int(initial is not None) + int(terminal is not None)
+    middle_parts = args.parts - fixed_parts
+    if middle_parts < 1:
+        raise SystemExit("число частей недостаточно для специализированных краёв")
+
+    if initial is not None or terminal is not None:
+        middle_start = initial or 0
+        middle_stop = terminal or len(names)
+        if args.balance == "descriptors":
+            desc_weight = np.bincount(point_node[owner], minlength=len(names)).astype(np.float64)
+            middle_edges = balanced_edges(desc_weight[middle_start:middle_stop], middle_parts) + middle_start
+        else:
+            middle_edges = np.linspace(middle_start, middle_stop, middle_parts + 1, dtype=int)
+        edge_parts = []
+        if initial is not None:
+            edge_parts.append(np.array([0, initial]))
+            middle_edges = middle_edges[1:]
+        edge_parts.append(middle_edges)
+        if terminal is not None:
+            edge_parts.append(np.array([len(names)]))
+        edges = np.concatenate(edge_parts)
+        if initial is not None:
+            LOGGER.info("первый специализированный core: [0,%d)", initial)
+        if terminal is not None:
+            LOGGER.info("последний специализированный core: [%d,%d)", terminal, len(names))
+        LOGGER.info("границы: %s", edges.tolist())
+    elif args.balance == "descriptors":
 
 
         desc_weight = np.bincount(point_node[owner], minlength=len(names)).astype(np.float64)
@@ -142,6 +180,16 @@ def main() -> int:
         core_start, core_stop = int(edges[index]), int(edges[index + 1])
         start = max(0, core_start - args.overlap_nodes)
         stop = min(len(names), core_stop + args.overlap_nodes)
+        trim_leading_overlap = (
+            (initial is not None and index == 1)
+            or (terminal is not None and index == args.parts - 1)
+        )
+        route_start = core_start if trim_leading_overlap else start
+        trim_trailing_overlap = (
+            (initial is not None and index == 0)
+            or (terminal is not None and index == args.parts - 2)
+        )
+        route_stop = core_stop if trim_trailing_overlap else stop
         nearest_keep = (point_node >= start) & (point_node < stop)
         if track_nodes is not None:
             track_keep = np.fromiter(
@@ -166,9 +214,9 @@ def main() -> int:
         output.mkdir(parents=True)
 
         runtime_data = {key: runtime[key] for key in runtime.files}
-        runtime_data["names"] = names[start:stop]
-        runtime_data["pos"] = pos[start:stop]
-        runtime_data["fwd"] = fwd[start:stop]
+        runtime_data["names"] = names[route_start:route_stop]
+        runtime_data["pos"] = pos[route_start:route_stop]
+        runtime_data["fwd"] = fwd[route_start:route_stop]
         runtime_data["points"] = points[old_point_ids]
         np.savez_compressed(output / "runtime.npz", **runtime_data)
         np.savez_compressed(
@@ -183,15 +231,17 @@ def main() -> int:
             "index": index,
             "number": index + 1,
             "parts": args.parts,
-            "global_node_start": start,
-            "global_node_stop_exclusive": stop,
+            "global_node_start": route_start,
+            "global_node_stop_exclusive": route_stop,
+            "visual_global_start": start,
+            "visual_global_stop_exclusive": stop,
             "core_global_start": core_start,
             "core_global_stop_exclusive": core_stop,
-            "local_core_start": core_start - start,
-            "local_core_stop_exclusive": core_stop - start,
+            "local_core_start": core_start - route_start,
+            "local_core_stop_exclusive": core_stop - route_start,
             "overlap_nodes": args.overlap_nodes,
             "track_visibility": track_nodes is not None,
-            "route_nodes": stop - start,
+            "route_nodes": route_stop - route_start,
             "points": int(len(old_point_ids)),
             "descriptors": int(descriptor_keep.sum()),
         }
@@ -206,7 +256,7 @@ def main() -> int:
             stop,
             core_start,
             core_stop,
-            stop - start,
+            route_stop - route_start,
             len(old_point_ids),
             descriptor_keep.sum(),
         )

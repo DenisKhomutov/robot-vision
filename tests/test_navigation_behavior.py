@@ -117,6 +117,31 @@ class RouteFollowerBehaviorTests(unittest.TestCase):
         self.assertEqual(command["node"], 0)
         self.assertEqual(command["target_node"], 1)
 
+    def test_intermediate_shard_does_not_stop_at_its_last_node(self):
+        follower = SimpleNamespace(
+            route=np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+            route_fwd=np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+            route_cum=np.array([0.0, 1.0]),
+            node_step=1.0,
+            lookahead=1,
+            lookahead_min=1,
+            lookahead_adapt=0.0,
+            deadzone=4.0,
+            heading_gate=0.3,
+            stop_end_nodes=-1,
+            steer="pursuit",
+            stanley_k=1.0,
+        )
+        command = RouteFollower.command(
+            follower,
+            np.array([1.0, 0.0, 0.0]),
+            np.array([1.0, 0.0, 0.0]),
+        )
+        self.assertNotEqual(command["move_type"], "stop")
+        self.assertAlmostEqual(command["bearing_deg"], 0.0)
+        self.assertEqual(command["node"], 1)
+        self.assertEqual(command["target_node"], 1)
+
 
 class FrameTimeoutGuardTests(unittest.TestCase):
     def test_timeout_and_first_fresh_frame_recovery(self):
@@ -139,19 +164,40 @@ class NavigationCoordinatorTests(unittest.TestCase):
 
 
 class RuntimeControllerTests(unittest.TestCase):
-    def test_backward_left_guard_changes_only_left_to_right(self):
+    def test_backward_uses_rear_axis_and_reverse_kinematics(self):
         cfg = SimpleNamespace(
             BACKWARD_ZONES={"map": ((0, 26),)},
-            BACKWARD_LEFT_BLOCK_ZONES={"map": ((0, 26),)},
+            BACKWARD_MAPS=set(),
             STEERING_OUTLIER_GUARDS={},
             DEADZONE_DEG=4.0,
         )
         controller = DirectionController(cfg, enabled=True)
-        command = {"map": "map", "global_node": 10, "move_type": "left", "deg": -7.0}
+        cases = ((170.0, "left", -10.0), (-170.0, "right", 10.0), (180.0, "straight", 0.0))
+        for raw, move_type, expected in cases:
+            command = {"map": "map", "global_node": 10, "move_type": "left", "deg": raw}
+            controller.process(command)
+            self.assertEqual(command["direction"], "backward")
+            self.assertEqual(command["move_type"], move_type)
+            self.assertAlmostEqual(command["deg"], expected)
+
+    def test_backward_map_latches_direction_without_node_zone(self):
+        cfg = SimpleNamespace(
+            BACKWARD_ZONES={},
+            BACKWARD_MAPS={"reverse_shard"},
+            STEERING_OUTLIER_GUARDS={},
+            DEADZONE_DEG=4.0,
+        )
+        controller = DirectionController(cfg, enabled=True)
+        command = {
+            "map": "reverse_shard",
+            "global_node": 500,
+            "move_type": "left",
+            "deg": -170.0,
+        }
         controller.process(command)
         self.assertEqual(command["direction"], "backward")
         self.assertEqual(command["move_type"], "right")
-        self.assertEqual(command["deg"], 173.0)
+        self.assertAlmostEqual(command["deg"], 10.0)
 
     def test_route_profile_latches_route_complete(self):
         cfg = SimpleNamespace(

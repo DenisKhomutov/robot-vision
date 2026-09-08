@@ -1,8 +1,16 @@
+import json
+
 from .. import config
 from ..core.aliked_localizer import ALIKEDLocalizer
 
 
 def create_localizer(map_name, back_facing, bank_path=None):
+    stop_end_nodes = config.STOP_END_NODES
+    shard_metadata = config.MAPS_DIR / map_name / "shard.json"
+    if shard_metadata.exists():
+        shard = json.loads(shard_metadata.read_text())
+        if int(shard["index"]) < int(shard["parts"]) - 1:
+            stop_end_nodes = -1
     return ALIKEDLocalizer(
         map_name,
         kpts=config.QUERY_KPTS,
@@ -25,7 +33,7 @@ def create_localizer(map_name, back_facing, bank_path=None):
         deadzone=config.DEADZONE_DEG,
         stanley_k=config.STANLEY_K,
         heading_gate=config.HEADING_GATE,
-        stop_end_nodes=config.STOP_END_NODES,
+        stop_end_nodes=stop_end_nodes,
         lag_s=config.NAV_LAG_S,
         lag_adaptive=config.NAV_LAG_ADAPTIVE,
         lead_max=config.NAV_LEAD_MAX,
