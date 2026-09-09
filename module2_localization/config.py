@@ -290,6 +290,9 @@ BACKWARD_MAPS = {
     "2-1-short/front_shard/01_of_15",
     "2-1-short/front_shard/15_of_15",
 }
+BACKWARD_RIGHT_ONLY_MAPS = {
+    "2-1-short/front_shard/01_of_15",
+}
 STEERING_OUTLIER_GUARDS = {
     "2-1/front_shard/24_of_25": (
         ROUTE_21_REVERSE_APPROACH_ZONE,

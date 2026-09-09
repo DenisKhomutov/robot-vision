@@ -168,6 +168,7 @@ class RuntimeControllerTests(unittest.TestCase):
         cfg = SimpleNamespace(
             BACKWARD_ZONES={"map": ((0, 26),)},
             BACKWARD_MAPS=set(),
+            BACKWARD_RIGHT_ONLY_MAPS=set(),
             STEERING_OUTLIER_GUARDS={},
             DEADZONE_DEG=4.0,
         )
@@ -184,6 +185,7 @@ class RuntimeControllerTests(unittest.TestCase):
         cfg = SimpleNamespace(
             BACKWARD_ZONES={},
             BACKWARD_MAPS={"reverse_shard"},
+            BACKWARD_RIGHT_ONLY_MAPS=set(),
             STEERING_OUTLIER_GUARDS={},
             DEADZONE_DEG=4.0,
         )
@@ -198,6 +200,38 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(command["direction"], "backward")
         self.assertEqual(command["move_type"], "right")
         self.assertAlmostEqual(command["deg"], 10.0)
+
+    def test_first_short_reverse_shard_converts_left_to_right(self):
+        map_name = "2-1-short/front_shard/01_of_15"
+        cfg = SimpleNamespace(
+            BACKWARD_ZONES={},
+            BACKWARD_MAPS={map_name, "2-1-short/front_shard/15_of_15"},
+            BACKWARD_RIGHT_ONLY_MAPS={map_name},
+            STEERING_OUTLIER_GUARDS={},
+            DEADZONE_DEG=4.0,
+        )
+        controller = DirectionController(cfg, enabled=True)
+        command = {"map": map_name, "global_node": 10, "move_type": "right", "deg": 170.0}
+        controller.process(command)
+        self.assertEqual(command["direction"], "backward")
+        self.assertEqual(command["move_type"], "right")
+        self.assertAlmostEqual(command["deg"], 10.0)
+
+    def test_last_short_reverse_shard_does_not_apply_right_only_guard(self):
+        map_name = "2-1-short/front_shard/15_of_15"
+        cfg = SimpleNamespace(
+            BACKWARD_ZONES={},
+            BACKWARD_MAPS={"2-1-short/front_shard/01_of_15", map_name},
+            BACKWARD_RIGHT_ONLY_MAPS={"2-1-short/front_shard/01_of_15"},
+            STEERING_OUTLIER_GUARDS={},
+            DEADZONE_DEG=4.0,
+        )
+        controller = DirectionController(cfg, enabled=True)
+        command = {"map": map_name, "global_node": 950, "move_type": "right", "deg": 170.0}
+        controller.process(command)
+        self.assertEqual(command["direction"], "backward")
+        self.assertEqual(command["move_type"], "left")
+        self.assertAlmostEqual(command["deg"], -10.0)
 
     def test_route_profile_latches_route_complete(self):
         cfg = SimpleNamespace(

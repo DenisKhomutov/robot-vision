@@ -2,6 +2,7 @@ class DirectionController:
     def __init__(self, cfg, enabled=False):
         self.zones = getattr(cfg, "BACKWARD_ZONES", {})
         self.maps = set(getattr(cfg, "BACKWARD_MAPS", ()))
+        self.right_only_maps = set(getattr(cfg, "BACKWARD_RIGHT_ONLY_MAPS", ()))
         self.steering_outlier_guards = getattr(cfg, "STEERING_OUTLIER_GUARDS", {})
         self.deadzone = getattr(cfg, "DEADZONE_DEG", 4.0)
         self.enabled = bool(enabled)
@@ -24,6 +25,9 @@ class DirectionController:
             deg = rear_axis_error
             cmd["deg"] = deg
             cmd["move_type"] = "straight" if abs(deg) < self.deadzone else ("right" if deg > 0 else "left")
+            if cmd.get("map") in self.right_only_maps and cmd["move_type"] == "left":
+                cmd["deg"] = abs(float(cmd["deg"]))
+                cmd["move_type"] = "right"
         guard = self.steering_outlier_guards.get(cmd.get("map"))
         if guard and node is not None and cmd.get("deg") is not None:
             (start, stop), max_deg = guard
