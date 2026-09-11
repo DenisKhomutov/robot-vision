@@ -21,13 +21,15 @@ class DirectionController:
         )
         cmd["direction"] = "backward" if backward else "forward"
         if backward and cmd.get("deg") is not None and cmd.get("move_type") not in ("stop", "lost"):
-            rear_axis_error = ((float(cmd["deg"]) - 180.0 + 180.0) % 360.0) - 180.0
-            deg = rear_axis_error
-            cmd["deg"] = deg
+            deg = ((float(cmd["deg"]) - 180.0 + 180.0) % 360.0) - 180.0
+
             cmd["move_type"] = "straight" if abs(deg) < self.deadzone else ("right" if deg > 0 else "left")
-            if cmd.get("map") in self.right_only_maps and cmd["move_type"] == "left":
-                cmd["deg"] = abs(float(cmd["deg"]))
-                cmd["move_type"] = "right"
+
+            if cmd["move_type"] != "straight":
+                cmd["move_type"] = "right" if cmd["move_type"] == "left" else "left"
+
+            cmd["deg"] = -(float(deg)) if cmd["move_type"] == "left" else abs(float(deg))
+
         guard = self.steering_outlier_guards.get(cmd.get("map"))
         if guard and node is not None and cmd.get("deg") is not None:
             (start, stop), max_deg = guard
