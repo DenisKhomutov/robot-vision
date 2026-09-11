@@ -173,7 +173,7 @@ class RuntimeControllerTests(unittest.TestCase):
             DEADZONE_DEG=4.0,
         )
         controller = DirectionController(cfg, enabled=True)
-        cases = ((170.0, "left", -10.0), (-170.0, "right", 10.0), (180.0, "straight", 0.0))
+        cases = ((170.0, "right", 10.0), (-170.0, "left", -10.0), (180.0, "straight", 0.0))
         for raw, move_type, expected in cases:
             command = {"map": "map", "global_node": 10, "move_type": "left", "deg": raw}
             controller.process(command)
@@ -198,10 +198,10 @@ class RuntimeControllerTests(unittest.TestCase):
         }
         controller.process(command)
         self.assertEqual(command["direction"], "backward")
-        self.assertEqual(command["move_type"], "right")
-        self.assertAlmostEqual(command["deg"], 10.0)
+        self.assertEqual(command["move_type"], "left")
+        self.assertAlmostEqual(command["deg"], -10.0)
 
-    def test_first_short_reverse_shard_converts_left_to_right(self):
+    def test_first_short_reverse_shard_uses_backward_inversion(self):
         map_name = "2-1-short/front_shard/01_of_15"
         cfg = SimpleNamespace(
             BACKWARD_ZONES={},
@@ -217,7 +217,7 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(command["move_type"], "right")
         self.assertAlmostEqual(command["deg"], 10.0)
 
-    def test_last_short_reverse_shard_does_not_apply_right_only_guard(self):
+    def test_last_short_reverse_shard_uses_same_backward_inversion(self):
         map_name = "2-1-short/front_shard/15_of_15"
         cfg = SimpleNamespace(
             BACKWARD_ZONES={},
@@ -230,8 +230,8 @@ class RuntimeControllerTests(unittest.TestCase):
         command = {"map": map_name, "global_node": 950, "move_type": "right", "deg": 170.0}
         controller.process(command)
         self.assertEqual(command["direction"], "backward")
-        self.assertEqual(command["move_type"], "left")
-        self.assertAlmostEqual(command["deg"], -10.0)
+        self.assertEqual(command["move_type"], "right")
+        self.assertAlmostEqual(command["deg"], 10.0)
 
     def test_route_profile_latches_route_complete(self):
         cfg = SimpleNamespace(

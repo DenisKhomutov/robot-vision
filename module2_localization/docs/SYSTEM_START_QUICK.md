@@ -7,7 +7,7 @@ cd ~/projects/robot-vision
 ## 1. Камеры и NATS
 
 ```bash
-sudo systemctl start camera-fanout.service
+sudo systemctl start cameras-fanout.service
 docker start nats 2>/dev/null || docker run -d --name nats -p 4222:4222 --restart unless-stopped nats:latest
 ls -l /tmp/cam_front_raw /tmp/cam_raw
 ```
@@ -32,14 +32,14 @@ python -m module2_localization.service --shm
 ```bash
 cd ~/projects/robot-vision
 python -m module2_localization.admin \
-  --bind 0.0.0.0 --port 8080 \
+  --bind 0.0.0.0 --port 8090 \
   --nats-url nats://127.0.0.1:4222
 ```
 
 Открыть с ноутбука или телефона:
 
 ```text
-http://192.168.40.48:8080/
+http://192.168.40.48:8090/
 ```
 
 В админке выбрать маршрут и дождаться `route_loaded`, при необходимости включить или
@@ -52,7 +52,7 @@ http://192.168.40.48:8080/
 
 ```bash
 tegrastats
-curl http://127.0.0.1:8080/api/status
+curl http://127.0.0.1:8090/api/status
 ```
 
 Остановка ручного запуска: `Ctrl+C` в терминалах демона и админки.

@@ -5,14 +5,15 @@
 
 ```text
 module2_localization/maps/1-2/front_full
+module2_localization/maps/1-2-short/front_full
 module2_localization/maps/2-1/front_full
-module2_localization/maps/3-1/front_full
-module2_localization/maps/2/rear_full
+module2_localization/maps/2-1-short/front_full
 ```
 
-Front-маршруты `1-2`, `2-1`, `3-1` разделены на 25 runtime-шардов каждый;
-задний маршрут `2` — на 10. Полная карта используется для первичного выбора
-шарда и recovery, а не как карта другой камеры или другой трассы.
+Front-маршруты `1-2` и `2-1` разделены на 25 runtime-шардов каждый.
+Short-маршруты `1-2-short` и `2-1-short` разделены на 15 runtime-шардов каждый.
+Полная карта используется для первичного выбора шарда и recovery, а не как карта
+другой камеры или другой трассы.
 
 Исторический эталон, на котором был подтверждён этот конвейер: front-карта 1-2
 с 1701/1701 зарегистрированными изображениями, 274 463 точками после очистки,

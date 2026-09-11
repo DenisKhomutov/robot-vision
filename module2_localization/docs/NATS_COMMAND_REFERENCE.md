@@ -253,7 +253,17 @@
 }
 ```
 
-Для маршрута `2-1` задний ход действует в глобальных диапазонах `0–26` и `1596–1632`. В этих диапазонах защитная логика заменяет ошибочный `left` на `right`, сохраняя модуль угла:
+Для маршрута `2-1` задний ход действует в глобальных диапазонах `0–26` и
+`1596–1632`.
+
+Для маршрута `2-1-short` задний ход действует в глобальных диапазонах `0–35` и
+`940–988`. Шарды `2-1-short/front_shard/01_of_15` и
+`2-1-short/front_shard/15_of_15` также считаются шардовыми зонами заднего хода.
+
+В backward-режиме команда руления симметрично инвертируется: если геометрия
+траектории даёт поворот корпуса налево, публикуется физическое руление вправо;
+если геометрия даёт поворот корпуса направо, публикуется физическое руление
+влево. `straight` остаётся `straight`.
 
 ```json
 {
@@ -411,8 +421,8 @@
 Упреждение вычисляется так:
 
 ```text
-base_nodes = clamp(speed_pwm / 13, 4, 20)
-effective_nodes = max(base_nodes - 30 × abs(offset), 4)
+base_nodes = clamp(speed_pwm / 45, 4, 20)
+effective_nodes = max(base_nodes - 25 × abs(offset), 4)
 ```
 
 Если сообщение отсутствует или в нём нет `speed_pwm`, используется постоянное упреждение `LOOKAHEAD_NODES=5`.
@@ -422,31 +432,31 @@ effective_nodes = max(base_nodes - 30 × abs(offset), 4)
 Статус:
 
 ```bash
-curl http://127.0.0.1:8080/api/status
+curl http://127.0.0.1:8090/api/status
 ```
 
 Список маршрутов:
 
 ```bash
-curl http://127.0.0.1:8080/api/routes
+curl http://127.0.0.1:8090/api/routes
 ```
 
 Отправка команды:
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/control \
+curl -X POST http://127.0.0.1:8090/api/control \
   -H 'Content-Type: application/json' \
   -d '{"cmd":"pause"}'
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/control \
+curl -X POST http://127.0.0.1:8090/api/control \
   -H 'Content-Type: application/json' \
   -d '{"cmd":"set_route","route":"2-1"}'
 ```
 
 ```bash
-curl -X POST http://127.0.0.1:8080/api/control \
+curl -X POST http://127.0.0.1:8090/api/control \
   -H 'Content-Type: application/json' \
   -d '{"cmd":"resume"}'
 ```
