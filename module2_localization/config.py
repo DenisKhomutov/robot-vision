@@ -13,7 +13,7 @@ SHARD_FULL_RECOVERY = True
 SHARD_RECOVERY_MIN_INLIERS = 20
 SHARD_SWITCH_POLICIES = {
     "2-1-short/front_shard/01_of_15": {
-        "switch_global_start": 30,
+        "switch_global_start": 25,
         "max_progress_step": 8,
         "confirm_fixes": 1,
         "min_candidate_inliers": 20,
@@ -27,7 +27,7 @@ SHARD_SWITCH_POLICIES = {
         "max_node_disagreement": 6,
     },
     "2-1-short/front_shard/14_of_15": {
-        "switch_global_start": 935,
+        "switch_global_start": 930,
         "max_progress_step": 8,
         "confirm_fixes": 1,
         "min_candidate_inliers": 20,
