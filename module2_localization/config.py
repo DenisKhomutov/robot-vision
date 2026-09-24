@@ -27,7 +27,7 @@ SHARD_SWITCH_POLICIES = {
         "max_node_disagreement": 6,
     },
     "2-1-short/front_shard/14_of_15": {
-        "switch_global_start": 930,
+        "switch_global_start": 915,
         "max_progress_step": 8,
         "confirm_fixes": 1,
         "min_candidate_inliers": 20,
@@ -257,6 +257,8 @@ BACKWARD_ZONES = {
 
     "2-1-short/front_full": ROUTE_21_SHORT_BACKWARD_ZONES,
     "2-1-short/front_shard/01_of_15": ROUTE_21_SHORT_BACKWARD_START_ZONE,
+    "2-1-short/front_shard/02_of_15": ROUTE_21_SHORT_BACKWARD_START_ZONE,
+    "2-1-short/front_shard/14_of_15": ROUTE_21_SHORT_BACKWARD_END_ZONE,
     "2-1-short/front_shard/15_of_15": ROUTE_21_SHORT_BACKWARD_END_ZONE,
 
     "3-1/front_full": ROUTE_31_BACKWARD_ZONES,
