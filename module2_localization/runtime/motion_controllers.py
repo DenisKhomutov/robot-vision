@@ -16,9 +16,17 @@ class DirectionController:
             return
         ranges = self.zones.get(cmd.get("map"))
         node = cmd.get("global_node", cmd.get("node"))
-        backward = cmd.get("map") in self.maps or bool(
+        # Backward/forward is a node-level decision, not a shard-level decision:
+        # one shard can contain both reverse and forward route segments.
+        #
+        # BACKWARD_MAPS is kept for compatibility with older configs where a map
+        # had no explicit ranges. If ranges are configured for the current map,
+        # they are authoritative and the whole-map fallback is ignored.
+        backward = bool(
             ranges and node is not None and any(a <= node <= b for a, b in ranges)
         )
+        if not ranges:
+            backward = cmd.get("map") in self.maps
         cmd["direction"] = "backward" if backward else "forward"
         if backward and cmd.get("deg") is not None and cmd.get("move_type") not in ("stop", "lost"):
             deg = ((float(cmd["deg"]) - 180.0 + 180.0) % 360.0) - 180.0

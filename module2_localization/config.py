@@ -256,8 +256,8 @@ BACKWARD_ZONES = {
     "2-1/front_shard/25_of_25": ROUTE_21_BACKWARD_END_ZONE,
 
     "2-1-short/front_full": ROUTE_21_SHORT_BACKWARD_ZONES,
-
-
+    "2-1-short/front_shard/01_of_15": ROUTE_21_SHORT_BACKWARD_START_ZONE,
+    "2-1-short/front_shard/15_of_15": ROUTE_21_SHORT_BACKWARD_END_ZONE,
 
     "3-1/front_full": ROUTE_31_BACKWARD_ZONES,
     "3-1/front_shard/01_of_25": ROUTE_31_BACKWARD_ZONES,
