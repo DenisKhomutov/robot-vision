@@ -3,7 +3,15 @@ from pathlib import Path
 
 
 def load_shard_chain(maps_dir: Path, start_map: str) -> list[dict]:
-    for manifest in maps_dir.glob("**/manifest.json"):
+    start_path = Path(start_map)
+    preferred = maps_dir / start_path.parent / "manifest.json"
+    candidates = [preferred] if preferred.exists() else []
+    candidates.extend(
+        manifest
+        for manifest in maps_dir.glob("**/manifest.json")
+        if manifest != preferred
+    )
+    for manifest in candidates:
         data = json.loads(manifest.read_text())
         shards = data.get("shards", [])
         if any(item.get("map") == start_map for item in shards):

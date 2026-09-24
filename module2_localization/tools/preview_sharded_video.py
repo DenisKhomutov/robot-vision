@@ -195,6 +195,10 @@ def main() -> int:
         map_name = result.pop("_map_name", active_map)
         offset = int(result.pop("_node_offset", 0))
         switched = bool(result.pop("_map_switched", False))
+        raw_local_node = None if result.get("node") is None else int(result["node"])
+        raw_global_node = None if raw_local_node is None else raw_local_node + offset
+        raw_target_node = None if result.get("target_node") is None else int(result["target_node"])
+        raw_global_target_node = None if raw_target_node is None else raw_target_node + offset
         if switched:
             was_paused = pilot.paused
             pilot = NavigationCommandFilter(config)
@@ -208,8 +212,9 @@ def main() -> int:
             command["move_type"] = "stop"
             command["deg"] = 0.0
             command["reason"] = "stale_frame"
-        global_node = None if command.get("node") is None else int(command["node"]) + offset
-        command["global_node"] = global_node
+        command_global_node = None if command.get("node") is None else int(command["node"]) + offset
+        global_node = command_global_node
+        command["global_node"] = command_global_node
         command["map"] = map_name
         command["route"] = "2-1" if args.map.startswith("2-1/") else None
         route_profile.process(command)
@@ -256,7 +261,10 @@ def main() -> int:
         diagnostics.write(json.dumps({
             "record_type": "frame",
             "processed": processed, "source_frame": source_index, "map": map_name,
-            "local_node": command.get("node"), "global_node": global_node,
+            "raw_local_node": raw_local_node, "raw_global_node": raw_global_node,
+            "raw_target_node": raw_target_node, "raw_global_target_node": raw_global_target_node,
+            "command_local_node": command.get("node"), "command_global_node": command_global_node,
+            "local_node": command.get("node"), "global_node": command_global_node,
             "ok": bool(result.get("ok")), "accepted": bool(pilot.accepted),
             "inliers": result.get("inliers"), "pairs": result.get("n_pairs", result.get("pairs")),
             "reason": result.get("reason"), "switched": switched,
