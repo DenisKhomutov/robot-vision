@@ -13,7 +13,7 @@ SHARD_FULL_RECOVERY = True
 SHARD_RECOVERY_MIN_INLIERS = 20
 SHARD_SWITCH_POLICIES = {
     "2-1-short/front_shard/01_of_15": {
-        "switch_global_start": 25,
+        "switch_global_start": 30,
         "max_progress_step": 8,
         "confirm_fixes": 1,
         "min_candidate_inliers": 20,
@@ -27,7 +27,7 @@ SHARD_SWITCH_POLICIES = {
         "max_node_disagreement": 6,
     },
     "2-1-short/front_shard/14_of_15": {
-        "switch_global_start": 915,
+        "switch_global_start": 935,
         "max_progress_step": 8,
         "confirm_fixes": 1,
         "min_candidate_inliers": 20,
@@ -116,9 +116,9 @@ TRAFFIC_LIGHT_ENABLED = True
 
 ROUTE_2_TRAFFIC_ZONE = (410, 430)
 ROUTE_12_TRAFFIC_ZONE = (875, 886)
-ROUTE_12_SHORT_TRAFFIC_ZONE = (535, 570)
+ROUTE_12_SHORT_TRAFFIC_ZONE = (540, 560)
 ROUTE_21_TRAFFIC_ZONE = (710, 718)
-ROUTE_21_SHORT_TRAFFIC_ZONE = (240, 280)
+ROUTE_21_SHORT_TRAFFIC_ZONE = (236, 256)
 ROUTE_31_TRAFFIC_ZONE = (897, 901)
 TRAFFIC_ZONES = {
 
@@ -236,8 +236,8 @@ DIRECTION_ENABLED = True
 ROUTE_21_BACKWARD_START_ZONE = [(0, 26)]
 ROUTE_21_BACKWARD_END_ZONE = [(1596, 1632)]
 ROUTE_21_BACKWARD_ZONES = ROUTE_21_BACKWARD_START_ZONE + ROUTE_21_BACKWARD_END_ZONE
-ROUTE_21_SHORT_BACKWARD_START_ZONE = [(0, 30)]
-ROUTE_21_SHORT_BACKWARD_END_ZONE = [(900, 950)]
+ROUTE_21_SHORT_BACKWARD_START_ZONE = [(0, 35)]
+ROUTE_21_SHORT_BACKWARD_END_ZONE = [(940, 988)]
 ROUTE_21_SHORT_BACKWARD_ZONES = (
     ROUTE_21_SHORT_BACKWARD_START_ZONE + ROUTE_21_SHORT_BACKWARD_END_ZONE
 )
@@ -257,8 +257,6 @@ BACKWARD_ZONES = {
 
     "2-1-short/front_full": ROUTE_21_SHORT_BACKWARD_ZONES,
     "2-1-short/front_shard/01_of_15": ROUTE_21_SHORT_BACKWARD_START_ZONE,
-    "2-1-short/front_shard/02_of_15": ROUTE_21_SHORT_BACKWARD_START_ZONE,
-    "2-1-short/front_shard/14_of_15": ROUTE_21_SHORT_BACKWARD_END_ZONE,
     "2-1-short/front_shard/15_of_15": ROUTE_21_SHORT_BACKWARD_END_ZONE,
 
     "3-1/front_full": ROUTE_31_BACKWARD_ZONES,
