@@ -9,12 +9,18 @@ LOOKAHEAD_ADAPT = 8.0
 STOP_END_NODES = 3
 
 
-_speed_pwm = None
+_speed_magnitude = None
 
+
+def set_speed_signal(value, neutral=1500.0, deadzone=30.0):
+    """Store zero-based speed magnitude from a centered RC pulse."""
+    global _speed_magnitude
+    _speed_magnitude = max(0.0, abs(float(value) - float(neutral)) - float(deadzone))
 
 def set_speed_pwm(value):
-    global _speed_pwm
-    _speed_pwm = value
+    """Compatibility API for callers already providing zero-based magnitude."""
+    global _speed_magnitude
+    _speed_magnitude = abs(float(value))
 
 
 class RouteFollower:
@@ -33,10 +39,11 @@ class RouteFollower:
     def command(self, C, fwd, lookahead_nodes=None, mode=None, stanley_k=None):
         if lookahead_nodes is None:
             speed_div = getattr(self, "lookahead_speed_div", None)
-            if speed_div and _speed_pwm is not None:
+            speed_enabled = getattr(self, "speed_lookahead_enabled", False)
+            if speed_enabled and speed_div and _speed_magnitude is not None:
                 lmin = getattr(self, "lookahead_min", LOOKAHEAD_MIN)
                 lmax = getattr(self, "lookahead_max", None) or getattr(self, "lookahead", LOOKAHEAD_NODES)
-                lookahead_nodes = max(lmin, min(_speed_pwm / speed_div, lmax))
+                lookahead_nodes = max(lmin, min(_speed_magnitude / speed_div, lmax))
             else:
                 lookahead_nodes = getattr(self, "lookahead", LOOKAHEAD_NODES)
         mode = getattr(self, "steer", "pursuit") if mode is None else mode

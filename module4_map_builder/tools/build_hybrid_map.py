@@ -31,6 +31,7 @@ def main() -> int:
     run(py,'-m','module4_map_builder.tools.extract_dpvo_keyframes','--state',out/'dpvo_state.pt','--video',video,'--calib',calib,'--out',out/'images','--stride',args.stride,'--skip',args.skip)
     bank=out/'dpvo_aliked_tracks_bank.npz'
     run(py,'-m','module4_map_builder.tools.build_dpvo_aliked_tracks_bank','--run-dir',out,'--images',out/'images','--trajectory',out/'trajectory_tum.txt','--calib',calib,'--out',bank,'--pair-strides',args.pair_strides,'--min-matches',30,'--min-track-len',2,'--max-reproj-error',args.max_reproj_error,'--min-parallax-deg',args.min_parallax_deg)
+    run(py,'-m','module4_map_builder.tools.export_runtime_map','--bank',bank,'--trajectory',out/'trajectory_tum.txt','--images',out/'images','--out-dir',out/'runtime_map')
     for view,black in [('colmap_view',False),('colmap_view_black',True)]:
         cmd=[py,'-m','module4_map_builder.tools.export_dpvo_aliked_bank_colmap','--bank',bank,'--trajectory',out/'trajectory_tum.txt','--images-src',out/'images','--out-dir',out/view]
         if black: cmd.append('--black')

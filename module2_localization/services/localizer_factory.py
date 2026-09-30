@@ -30,6 +30,7 @@ def create_localizer(map_name, back_facing, bank_path=None):
         lookahead_adapt=config.LOOKAHEAD_ADAPT,
         lookahead_speed_div=getattr(config, "LOOKAHEAD_SPEED_DIV", None),
         lookahead_max=getattr(config, "LOOKAHEAD_MAX", None),
+        speed_lookahead_enabled=getattr(config, "SPEED_LOOKAHEAD_ENABLED", False),
         deadzone=config.DEADZONE_DEG,
         stanley_k=config.STANLEY_K,
         heading_gate=config.HEADING_GATE,

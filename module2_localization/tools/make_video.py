@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 import time
 from collections import deque
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from module2_localization.core.aliked_localizer import ALIKEDLocalizer
 from module2_localization.core.command_filter import NavigationCommandFilter
-from module2_localization.core.route_follower import RouteFollower
+from module2_localization.core.route_follower import RouteFollower, set_speed_signal
 import config as cfg
 
 
@@ -96,6 +97,8 @@ def main():
     ap.add_argument("--lag-s", type=float, default=None)
     ap.add_argument("--lead-max", type=float, default=None)
     ap.add_argument("--lead-smooth", type=int, default=None)
+    ap.add_argument("--speed-signal-us", type=float, default=None,
+                    help="постоянный RC-сигнал скорости для расчёта упреждения; 1500 = стоп")
     args = ap.parse_args()
 
     lookahead = cfg.LOOKAHEAD_NODES if args.lookahead is None else args.lookahead
@@ -104,6 +107,12 @@ def main():
     lag_s = cfg.NAV_LAG_S if args.lag_s is None else args.lag_s
     lead_max = cfg.NAV_LEAD_MAX if args.lead_max is None else args.lead_max
     lead_smooth = cfg.NAV_LEAD_SMOOTH if args.lead_smooth is None else args.lead_smooth
+    if args.speed_signal_us is not None:
+        set_speed_signal(
+            args.speed_signal_us,
+            neutral=getattr(cfg, "SPEED_NEUTRAL_US", 1500.0),
+            deadzone=getattr(cfg, "SPEED_DEADZONE_US", 30.0),
+        )
 
     loc = ALIKEDLocalizer(args.map, kpts=args.kpts, det_threshold=args.q_threshold,
                           nms_radius=args.q_nms, max_error=args.max_error, steer=args.mode,
@@ -113,7 +122,11 @@ def main():
                           match_ratio=cfg.MATCH_RATIO, match_topk=cfg.MATCH_TOPK,
                           focal_fallback=cfg.FOCAL_FALLBACK, min_pairs=cfg.MIN_PAIRS,
                           lookahead=lookahead, lookahead_min=lookahead_min,
-                          lookahead_adapt=lookahead_adapt, deadzone=cfg.DEADZONE_DEG,
+                          lookahead_adapt=lookahead_adapt,
+                          lookahead_speed_div=cfg.LOOKAHEAD_SPEED_DIV,
+                          lookahead_max=cfg.LOOKAHEAD_MAX,
+                          speed_lookahead_enabled=cfg.SPEED_LOOKAHEAD_ENABLED,
+                          deadzone=cfg.DEADZONE_DEG,
                           stanley_k=cfg.STANLEY_K, heading_gate=cfg.HEADING_GATE,
                           stop_end_nodes=cfg.STOP_END_NODES,
                           lag_s=lag_s, lag_adaptive=cfg.NAV_LAG_ADAPTIVE,
@@ -124,6 +137,7 @@ def main():
 
     cap = cv2.VideoCapture(args.video)
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    source_fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
     out_path = Path(args.out) if args.out else ROOT / "out" / f"{Path(args.video).stem}_localized.mp4"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     W = PANE + VPANE
@@ -133,6 +147,8 @@ def main():
     tmp = ROOT / "out" / "_frame.jpg"
     trail = deque(maxlen=TRAIL)
     pilot = NavigationCommandFilter(cfg)
+    pilot.resume()
+    command_rows = []
     idx = kept = ok_n = 0
     t_start = time.perf_counter()
     times = []
@@ -155,7 +171,16 @@ def main():
         ratio = r["inliers"] / max(r.get("n_pairs", 0), 1) if r["ok"] else 0.0
         if r["ok"] and (r["inliers"] < args.min_inliers or ratio < args.min_inlier_ratio):
             r = {"ok": False, "inliers": r["inliers"]}
-        cmd = pilot.step(r, now=idx / args.fps)
+        cmd = pilot.step(r, now=idx / source_fps)
+        command_rows.append({
+            "source_frame": idx,
+            "time_s": idx / source_fps,
+            "speed_signal_us": args.speed_signal_us,
+            "localization_ok": bool(r.get("ok")),
+            "pairs": int(r.get("n_pairs", 0)),
+            "inliers": int(r.get("inliers", 0)),
+            "command": cmd,
+        })
         command_good = cmd["move_type"] != "lost"
         good = False
         if pilot.accepted:
@@ -230,7 +255,12 @@ def main():
 
     cap.release()
     vw.release()
+    commands_path = out_path.with_suffix(".commands.jsonl")
+    with commands_path.open("w", encoding="utf-8") as stream:
+        for row in command_rows:
+            stream.write(json.dumps(row, ensure_ascii=False) + "\n")
     tmp.unlink(missing_ok=True)
+    print(f"команды -> {commands_path}")
     print(f"\nкадров {kept}, локализовано {ok_n} ({100 * ok_n / max(kept, 1):.0f}%), "
           f"медиана {np.median(times):.0f} мс -> {out_path}")
     return 0

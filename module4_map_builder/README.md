@@ -69,9 +69,10 @@ python -m module4_map_builder.tools.build_hybrid_map \
 3. извлекает ALIKED features;
 4. строит LightGlue matches для сдвигов `1,2,4,8`;
 5. формирует multi-view tracks и триангулирует landmarks;
-6. сохраняет runtime bank;
-7. создаёт обычную и чёрную COLMAP viewer-модели;
-8. запускает `colmap model_analyzer`, если COLMAP установлен.
+6. сохраняет исходный гибридный bank;
+7. экспортирует совместимые с module2 `runtime_map/runtime.npz` и `runtime_map/aliked_bank.npz`;
+8. создаёт обычную и чёрную COLMAP viewer-модели;
+9. запускает `colmap model_analyzer`, если COLMAP установлен.
 
 Настраиваемые параметры:
 
@@ -92,6 +93,10 @@ module4_map_builder/out/dpvo/<name>/
 ├── images/
 ├── dpvo_aliked_tracks_bank.npz
 ├── dpvo_aliked_tracks_bank.json
+├── runtime_map/
+│   ├── runtime.npz
+│   ├── aliked_bank.npz
+│   └── runtime_map.json
 ├── colmap_view/
 │   ├── images/
 │   └── sparse_text/{cameras,images,points3D}.txt

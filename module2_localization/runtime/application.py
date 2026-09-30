@@ -130,7 +130,13 @@ async def run(args) -> int:
             except (json.JSONDecodeError, AttributeError):
                 return
             if pwm is not None:
-                route_mod.set_speed_pwm(float(pwm))
+                route_mod.set_speed_signal(
+                    float(pwm),
+                    neutral=getattr(config, "SPEED_NEUTRAL_US", 1500.0),
+                    deadzone=getattr(config, "SPEED_DEADZONE_US", 30.0),
+                )
+                if navlog is not None:
+                    navlog.emit("speed_signal", pulse_us=float(pwm))
 
         await nc.subscribe(getattr(config, "NATS_SPEED_TOPIC", "ai.nats_speed_topic"), on_speed)
 

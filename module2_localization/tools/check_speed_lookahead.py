@@ -12,7 +12,10 @@ def calculate(speed_pwm: float, offset: float, node_step: float | None) -> dict[
     maximum = float(config.LOOKAHEAD_MAX)
     divisor = float(config.LOOKAHEAD_SPEED_DIV)
     adaptation = float(config.LOOKAHEAD_ADAPT)
-    base = max(minimum, min(float(speed_pwm) / divisor, maximum))
+    neutral = float(getattr(config, "SPEED_NEUTRAL_US", 1500.0))
+    deadzone = float(getattr(config, "SPEED_DEADZONE_US", 30.0))
+    magnitude = max(0.0, abs(float(speed_pwm) - neutral) - deadzone)
+    base = max(minimum, min(magnitude / divisor, maximum))
     effective = max(base - adaptation * abs(float(offset)), minimum)
     distance = None if node_step is None else effective * float(node_step)
     return {"base_nodes": base, "effective_nodes": effective, "target_distance": distance}
@@ -34,7 +37,8 @@ def synthetic(samples: int, offset: float, node_step: float | None) -> None:
     if samples < 2:
         raise SystemExit("samples должен быть >= 2")
     print(
-        f"formula: base=clamp(PWM/{config.LOOKAHEAD_SPEED_DIV}, "
+        f"formula: magnitude=max(0, abs(signal-{config.SPEED_NEUTRAL_US})-"
+        f"{config.SPEED_DEADZONE_US}); base=clamp(magnitude/{config.LOOKAHEAD_SPEED_DIV}, "
         f"{config.LOOKAHEAD_MIN}, {config.LOOKAHEAD_MAX}); "
         f"effective=max(base-{config.LOOKAHEAD_ADAPT}*abs(offset), {config.LOOKAHEAD_MIN})"
     )

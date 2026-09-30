@@ -53,6 +53,7 @@ class ALIKEDLocalizer:
         win_nodes=0,
         lookahead_speed_div=None,
         lookahead_max=None,
+        speed_lookahead_enabled=False,
         bank_path=None,
     ):
         from lightglue import ALIKED
@@ -75,6 +76,7 @@ class ALIKEDLocalizer:
         self.lookahead_adapt = lookahead_adapt
         self.lookahead_speed_div = lookahead_speed_div
         self.lookahead_max = lookahead_max
+        self.speed_lookahead_enabled = speed_lookahead_enabled
         self.deadzone = deadzone
         self.stanley_k = stanley_k
         self.heading_gate = heading_gate
