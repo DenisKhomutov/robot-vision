@@ -126,15 +126,6 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
     </section>
 
     <section class="card">
-      <h2>Режим камер</h2>
-      <div class="row2" style="grid-template-columns:1fr 1fr 1fr">
-        <button class="toggle gated" id="btnFront" data-cmd="set_mode" data-mode="front">FRONT</button>
-        <button class="toggle gated" id="btnRear" data-cmd="set_mode" data-mode="rear">REAR</button>
-        <button class="toggle gated" id="btnDual" data-cmd="set_mode" data-mode="dual">DUAL</button>
-      </div>
-    </section>
-
-    <section class="card">
       <h2>Светофор</h2>
       <div class="row2">
         <button class="toggle" id="btnTlOn" data-cmd="set_traffic" data-enabled="true">ВКЛ</button>
@@ -297,7 +288,7 @@ async function tick(){
     setBadge($('#maneuvers'),status.terminal_maneuvers===false?'манёвры 2-1 выкл':'манёвры 2-1 вкл',
       status.terminal_maneuvers===false?'warn':'ok');
 
-    $('#mode').textContent=(status.mode||'—')+(status.cam?' · '+status.cam:'');
+    $('#mode').textContent=status.map?'одна камера':'карта не выбрана';
     $('#mode').className='badge'+(status.map_mismatch?' bad':'');
 
     if(status.route&&document.activeElement!==$('#routeSelect'))$('#routeSelect').value=status.route;
@@ -314,9 +305,6 @@ async function tick(){
     let paused=!!status.paused;
     $('#btnResume').classList.toggle('active',!paused);
     $('#btnPause').classList.toggle('active',paused);
-    $('#btnFront').classList.toggle('active',status.mode==='front');
-    $('#btnRear').classList.toggle('active',status.mode==='rear');
-    $('#btnDual').classList.toggle('active',status.mode==='dual');
     $('#btnTlOn').classList.toggle('active',!!status.traffic_enabled);
     $('#btnTlOff').classList.toggle('active',!status.traffic_enabled);
     $('#btnDirOn').classList.toggle('active',!!status.direction_enabled);

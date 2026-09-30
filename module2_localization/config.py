@@ -62,35 +62,22 @@ CAM_SHM_SOCKET = "/tmp/cam_raw"
 CAM_WIDTH = 1280
 CAM_HEIGHT = 720
 CAM_FPS = 30
-FRONT_SHM_SOCKET = "/tmp/cam_front_raw"
-REAR_SHM_SOCKET = "/tmp/cam_raw"
-FRONT_CAM_BACK = False
-REAR_CAM_BACK = True
+CAMERA_BACK = False
 
 FRAME_TIMEOUT_CHECK_ENABLED = True
 FRAME_TIMEOUT_S = 0.5
 FRAME_TIMEOUT_RECOVERY_FRAMES = 1
 
-# The new office runtime map will be placed under maps/office/front. It is not
-# selected automatically until the new localizer is integrated and validated
-ROUTES = {
-    "office": {
-        "label": "Офис",
-        "camera": "front",
-        "front_map": "office/front",
-        "rear_map": None,
-    },
-}
-DEFAULT_ROUTE = "office"
-FRONT_MAP = ROUTES["office"]["front_map"]
-REAR_MAP = None
-DEFAULT_MAP = FRONT_MAP
-NAV_MODE = "front"
-DUAL_LOST_HOLD = 3
-DUAL_BACK_HOLD = 5
+# No map or route is selected by default. Runtime maps are deployment artifacts
+# and are registered here only after field validation.
+# Schema: {"route-id": {"label": "Display name", "map": "relative/map/path"}}
+ROUTES = {}
+DEFAULT_ROUTE = None
+DEFAULT_MAP = None
 
-# Route-specific field behavior is disabled for office development
-TRAFFIC_LIGHT_ENABLED = False
+# Traffic-light models are always loaded with the runtime. Detection remains
+# inactive outside map-specific zones.
+TRAFFIC_LIGHT_ENABLED = True
 TRAFFIC_ZONES = {}
 TRAFFIC_DET_CONF = 0.15
 DIRECTION_ENABLED = False

@@ -1,6 +1,6 @@
 # Module 2: runtime visual localization and navigation
 
-`module2_localization` — runtime-модуль робота. Он загружает готовую карту, локализует кадры камеры, ведёт робота по маршруту и формирует управляющие команды.
+`module2_localization` — однокамерный runtime-модуль робота. Он загружает готовую карту, локализует кадры единственного навигационного видеопотока, ведёт робота по маршруту и формирует управляющие команды. Переключения `front/rear/dual` в новом стеке нет.
 
 Сборка и экспорт новых карт в module2 запрещены. Новый конвейер сборки находится в [`module4_map_builder`](../module4_map_builder/README.md). Старый COLMAP/GLOMAP и MSLD стек удалён из ветки `10`; его история сохранена в ветке `9` и проекте `robot-vision-legacy`.
 
@@ -46,5 +46,7 @@ python -m module2_localization.tools.verify_runtime_maps
 python -m module2_localization.tools.bench_locate --help
 python -m module2_localization.tools.preview_sharded_video --help
 ```
+
+Маршрут в `config.ROUTES` содержит одну ссылку `map`; поля `front_map`, `rear_map` и команда `set_mode` не используются. Светофорный детектор получает тот же кадр, что и локализатор.
 
 Module2 не должен зависеть от DPVO, COLMAP/GLOMAP или инструментов сборки карты. Для деплоя ему нужны только runtime-зависимости и готовая карта.

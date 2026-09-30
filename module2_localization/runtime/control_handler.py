@@ -9,32 +9,28 @@ from ..services.localizer_factory import create_runtime_localizer
 def make_control_handler(
     nav, traffic=None, full_recovery=None, direction=None, route_profile=None, frame_guard=None, navlog=None
 ):
-    async def _ensure_camera(camera, map_name, route):
-        """Догрузить карту камеры под конкретный маршрут, если ещё не та."""
+    async def _ensure_map(map_name, route):
         min_shard_index = None
         max_shard_index = None
         if route == "2-1" and route_profile is not None and not route_profile.terminal_maneuvers:
-            if map_name == "2-1/front_shard/01_of_25":
-                map_name = "2-1/front_shard/02_of_25"
             min_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MIN_SHARD_INDEX", 1)
             max_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MAX_SHARD_INDEX", 23)
-        if nav.has_camera(camera) and getattr(nav, f"{camera}_map", None) == map_name:
+        if nav.localizer is not None and nav.map == map_name:
             return True
-        print(f"[control] {camera}: загрузка {map_name} (маршрут {route})...", flush=True)
+        print(f"[control] загрузка {map_name} (маршрут {route})...", flush=True)
         try:
-            back_facing = config.FRONT_CAM_BACK if camera == "front" else config.REAR_CAM_BACK
             localizer = await asyncio.to_thread(
                 create_runtime_localizer,
                 map_name,
-                back_facing,
+                getattr(config, "CAMERA_BACK", False),
                 full_recovery,
                 min_shard_index,
                 max_shard_index,
                 navlog.emit if navlog is not None else None,
             )
-            nav.set_localizer(camera, localizer, map_name, route=route)
+            nav.set_localizer(localizer, map_name, route=route)
         except Exception as exc:
-            print(f"[control] не удалось загрузить карту {camera}: {exc}", flush=True)
+            print(f"[control] не удалось загрузить карту: {exc}", flush=True)
             return False
         return True
 
@@ -49,17 +45,14 @@ def make_control_handler(
                 "control_received",
                 command=c,
                 route=nav.route,
-                mode=nav.mode,
-                front_paused=nav.pf.paused,
-                rear_paused=nav.pr.paused,
+                paused=nav.pilot.paused,
             )
         if cmd == "pause":
             nav.pause()
         elif cmd == "resume":
             nav.resume()
         elif cmd == "reset":
-            nav.pf.reset()
-            nav.pr.reset()
+            nav.reset()
             if route_profile:
                 route_profile.reset()
             if traffic:
@@ -71,33 +64,10 @@ def make_control_handler(
             return
         elif cmd == "reset_shard":
             nav.reset_shard()
-            print("[control] сброс шарда: релокализация по полной карте", flush=True)
-            return
-        elif cmd == "set_mode":
-            if not (nav.pf.paused and nav.pr.paused):
-                print("[control] set_mode: сначала ПАУЗА, потом смена режима", flush=True)
-                return
-            mode = c.get("mode")
-            needed = {"front": ("front",), "rear": ("rear",), "dual": ("front", "rear")}.get(mode)
-            if needed is None:
-                print(f"[control] неизвестный режим: {mode}", flush=True)
-                return
-            spec = getattr(config, "ROUTES", {}).get(nav.route, {})
-            for camera in needed:
-                map_name = spec.get(f"{camera}_map")
-                if not map_name:
-                    print(f"[control] у маршрута {nav.route} нет карты для {camera}", flush=True)
-                    return
-
-                if not await _ensure_camera(camera, map_name, nav.route):
-                    return
-            if not nav.set_mode(mode):
-                print(f"[control] режим {mode} недоступен", flush=True)
-                return
-            print(f"[control] режим -> {nav.mode}", flush=True)
+            print("[control] сброс карты: полная релокализация", flush=True)
             return
         elif cmd == "set_route":
-            if not (nav.pf.paused and nav.pr.paused):
+            if not nav.pilot.paused:
                 print("[control] set_route: сначала ПАУЗА, потом смена маршрута", flush=True)
                 return
             route = c.get("route")
@@ -105,16 +75,16 @@ def make_control_handler(
             if spec is None:
                 print(f"[control] неизвестный маршрут: {route}", flush=True)
                 return
+            map_name = spec.get("map")
+            if not map_name:
+                print(f"[control] у маршрута {route} не задана map", flush=True)
+                return
             if nav.route != route:
                 nav.clear_route()
             nav.loading_route = route
-            for camera in ("front", "rear"):
-                map_name = spec.get(f"{camera}_map")
-                if not map_name:
-                    continue
-                if not await _ensure_camera(camera, map_name, route):
-                    nav.loading_route = None
-                    return
+            if not await _ensure_map(map_name, route):
+                nav.loading_route = None
+                return
             if not nav.set_route(route):
                 nav.loading_route = None
                 print(f"[control] маршрут {route} недоступен", flush=True)
@@ -126,7 +96,7 @@ def make_control_handler(
             print(f"[control] маршрут -> {route}", flush=True)
             return
         elif cmd == "clear_route":
-            if not (nav.pf.paused and nav.pr.paused):
+            if not nav.pilot.paused:
                 print("[control] clear_route: сначала ПАУЗА", flush=True)
                 return
             nav.clear_route()
@@ -137,42 +107,38 @@ def make_control_handler(
             gc.collect()
             try:
                 import torch
-
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except ImportError:
                 pass
-            print("[control] стоянка: маршрут и карты выгружены", flush=True)
+            print("[control] стоянка: маршрут и карта выгружены", flush=True)
             return
         elif cmd == "set_traffic":
             if traffic is None:
-                print("[control] светофорная ветка недоступна: нет передней камеры", flush=True)
+                print("[control] светофорная ветка недоступна", flush=True)
                 return
-            enabled = bool(c.get("enabled"))
-            await traffic.set_enabled(enabled)
-            print(f"[control] детекция светофора -> {'ON' if enabled else 'OFF'}", flush=True)
+            await traffic.set_enabled(bool(c.get("enabled")))
+            print(f"[control] детекция светофора -> {'ON' if traffic.enabled else 'OFF'}", flush=True)
             return
         elif cmd == "set_direction":
             if direction is None:
                 print("[control] направление недоступно", flush=True)
                 return
-            enabled = bool(c.get("enabled"))
-            direction.set_enabled(enabled)
-            print(f"[control] расчёт направления -> {'ON' if enabled else 'OFF'}", flush=True)
+            direction.set_enabled(bool(c.get("enabled")))
+            print(f"[control] расчёт направления -> {'ON' if direction.enabled else 'OFF'}", flush=True)
             return
         elif cmd in ("set_frame_guard", "set_frame_hash"):
             if frame_guard is None:
                 print("[control] контроль потока кадров недоступен", flush=True)
                 return
-            enabled = bool(c.get("enabled"))
-            frame_guard.set_enabled(enabled)
-            print(f"[control] контроль потока кадров -> {'ON' if enabled else 'OFF'}", flush=True)
+            frame_guard.set_enabled(bool(c.get("enabled")))
+            print(f"[control] контроль потока кадров -> {'ON' if frame_guard.enabled else 'OFF'}", flush=True)
             return
         elif cmd == "set_terminal_maneuvers":
             if route_profile is None:
                 print("[control] профиль конечных манёвров недоступен", flush=True)
                 return
-            if not (nav.pf.paused and nav.pr.paused):
+            if not nav.pilot.paused:
                 print("[control] set_terminal_maneuvers: сначала ПАУЗА", flush=True)
                 return
             if nav.route is not None:

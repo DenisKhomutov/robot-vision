@@ -128,7 +128,6 @@ async def serve(bind="0.0.0.0", port=8080, nats_url=None, logs_dir=DEFAULT_LOGS_
                     "reset",
                     "reset_shard",
                     "reset_traffic",
-                    "set_mode",
                     "set_route",
                     "clear_route",
                     "set_traffic",

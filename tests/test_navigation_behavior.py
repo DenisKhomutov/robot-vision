@@ -22,11 +22,8 @@ def pilot_config(**overrides):
         "STOP_MIN_INLIERS": 20,
         "STOP_CONFIRM": 2,
         "MIN_INLIERS": 15,
-        "NAV_MODE": "front",
         "MAPS_DIR": ".",
         "ROUTES": {},
-        "DUAL_LOST_HOLD": 2,
-        "DUAL_BACK_HOLD": 2,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -156,11 +153,26 @@ class FrameTimeoutGuardTests(unittest.TestCase):
 
 class NavigationCoordinatorTests(unittest.TestCase):
     def test_without_route_returns_safe_stop(self):
-        navigator = CameraNavigator(None, None, pilot_config(), route=None)
-        command = navigator.step(None, None)
+        navigator = CameraNavigator(None, pilot_config(), route=None)
+        command = navigator.step(None)
         self.assertEqual(command["move_type"], "stop")
         self.assertEqual(command["reason"], "route_not_selected")
-        self.assertEqual(command["mode"], "idle")
+
+
+    def test_single_camera_route_emits_localized_command(self):
+        class Localizer:
+            def locate(self, frame):
+                return localization_result(node=4, inliers=30)
+
+        cfg = pilot_config(ROUTES={"office": {"map": "office"}})
+        navigator = CameraNavigator(Localizer(), cfg, map_name="office", route="office")
+        navigator.resume()
+        command = navigator.step(np.zeros((2, 2, 3), dtype=np.uint8))
+        self.assertEqual(command["move_type"], "straight")
+        self.assertEqual(command["map"], "office")
+        self.assertEqual(command["global_node"], 4)
+        self.assertNotIn("cam", command)
+        self.assertNotIn("mode", command)
 
 
 class RuntimeControllerTests(unittest.TestCase):

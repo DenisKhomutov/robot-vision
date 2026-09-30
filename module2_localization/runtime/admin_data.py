@@ -64,8 +64,7 @@ def map_catalog() -> list[dict[str, object]]:
         if not (path / "aliked_bank.npz").exists():
             continue
         name = path.relative_to(config.MAPS_DIR).as_posix()
-        camera = "front" if "front" in name else "rear" if "rear" in name else "unknown"
-        item: dict[str, object] = {"name": name, "camera": camera, "shard": False}
+        item: dict[str, object] = {"name": name, "shard": False}
         metadata = path / "shard.json"
         if metadata.exists():
             shard = json.loads(metadata.read_text())
