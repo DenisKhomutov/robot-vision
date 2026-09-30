@@ -152,7 +152,7 @@ def main():
 
     sys.path.insert(0,str(Path.cwd()))
     from lightglue import ALIKED, LightGlue
-    from module2_localization.core.model_weights import configure_local_model_weights
+    from module4_map_builder.model_weights import configure_local_model_weights
     configure_local_model_weights()
     device='cuda' if torch.cuda.is_available() else 'cpu'
     half=device=='cuda'

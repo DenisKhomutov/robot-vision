@@ -1,4 +1,8 @@
-data/
-maps/
-out/
-map_for_office/
+data/*
+!data/.gitkeep
+maps/*
+!maps/.gitkeep
+out/*
+!out/.gitkeep
+weights/*
+!weights/.gitkeep

@@ -1,30 +1,50 @@
-# Модуль визуальной локализации и навигации
+# Module 2: runtime visual localization and navigation
 
-Рабочий runtime запускается через совместимые точки входа:
+`module2_localization` — runtime-модуль робота. Он загружает готовую карту, локализует кадры камеры, ведёт робота по маршруту и формирует управляющие команды.
+
+Сборка и экспорт новых карт в module2 запрещены. Новый конвейер сборки находится в [`module4_map_builder`](../module4_map_builder/README.md). Старый COLMAP/GLOMAP и MSLD стек удалён из ветки `10`; его история сохранена в ветке `9` и проекте `robot-vision-legacy`.
+
+## Структура
+
+- `core/` — локализатор, runtime-map loader, геометрия маршрута и фильтрация команд;
+- `runtime/` — цикл навигации, источники кадров, NATS, диагностика и управление;
+- `services/` — загрузка карт и orchestration локализаторов;
+- `maps/` — готовые runtime-карты;
+- `tools/` — только запуск, проверка и визуальная диагностика runtime;
+- `docs/` — эксплуатационная документация робота.
+
+## Запуск
 
 ```bash
 python -m module2_localization.service
 python -m module2_localization.admin
 ```
 
-Реализация процесса навигации находится в `runtime`, математическое ядро — в
-`core`, управление цепочкой карт — в `services`, а оффлайн-команды подготовки и
-проверки карт — в `tools`.
+Запуск по видео без NATS:
+
+```bash
+python -m module2_localization.service \
+  --video <video.mkv> \
+  --source-step 2 \
+  --no-nats
+```
 
 ## Документация
 
-- [SYSTEM_START_QUICK.md](docs/SYSTEM_START_QUICK.md) — краткий запуск системы на Jetson.
-- [NATS_COMMAND_REFERENCE.md](docs/NATS_COMMAND_REFERENCE.md) — команды, состояния и NATS-контракт.
-- [RUNTIME_SHARDS_AND_WEB_ADMIN.md](docs/RUNTIME_SHARDS_AND_WEB_ADMIN.md) — маршруты, шарды, recovery и веб-админка.
-- [NAVIGATION_LOGS.md](docs/NAVIGATION_LOGS.md) — журнал навигации и его разбор.
-- [STREET_NAVIGATION_TUNING.md](docs/STREET_NAVIGATION_TUNING.md) — настройка упреждения и рулевого управления.
-- [REVERSE_STEERING_MODEL.md](docs/REVERSE_STEERING_MODEL.md) — подтверждённая защита и правильная модель заднего хода.
-- [STREET_MAP_BUILDING_HANDOFF.md](docs/STREET_MAP_BUILDING_HANDOFF.md) — полный конвейер сборки уличной карты.
-- [MSLD_LANDMARK_DISTILLATION.md](docs/MSLD_LANDMARK_DISTILLATION.md) — экспериментальная дистилляция стабильных ориентиров.
+- [SYSTEM_START_QUICK.md](docs/SYSTEM_START_QUICK.md) — запуск на Jetson;
+- [NATS_COMMAND_REFERENCE.md](docs/NATS_COMMAND_REFERENCE.md) — NATS-контракт;
+- [RUNTIME_SHARDS_AND_WEB_ADMIN.md](docs/RUNTIME_SHARDS_AND_WEB_ADMIN.md) — карты, recovery и веб-интерфейс;
+- [NAVIGATION_LOGS.md](docs/NAVIGATION_LOGS.md) — журнал навигации;
+- [STREET_NAVIGATION_TUNING.md](docs/STREET_NAVIGATION_TUNING.md) — настройка движения;
+- [REVERSE_STEERING_MODEL.md](docs/REVERSE_STEERING_MODEL.md) — задний ход.
 
-Текущая рабочая схема использует локализацию по ALIKED, runtime-карты с банком
-3D-ориентиров и последовательные шарды. MSLD остаётся экспериментом и не заменяет
-рабочие карты до отдельного полного сравнения.
+## Runtime-инструменты
 
-TODO List:
-1. Analyze the current pipeline through the module 2 code review (algorithms, code, maths. threory).
+```bash
+python -m module2_localization.tools.run_localization
+python -m module2_localization.tools.verify_runtime_maps
+python -m module2_localization.tools.bench_locate --help
+python -m module2_localization.tools.preview_sharded_video --help
+```
+
+Module2 не должен зависеть от DPVO, COLMAP/GLOMAP или инструментов сборки карты. Для деплоя ему нужны только runtime-зависимости и готовая карта.

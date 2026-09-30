@@ -90,11 +90,7 @@ torch транзитивно с обычного PyPI и затирает выб
 
 ## Запуск
 
-Брокер (на той машине, где работает демон):
-
-```bash
-docker run -d --name nats -p 4222:4222 --restart unless-stopped nats:latest
-```
+Брокер NATS запускается как системная служба на той же машине, что и демон.
 
 Демон — кадры из сокета камеры (боевой режим):
 
@@ -120,43 +116,11 @@ python -m module2_localization.admin \
 
 После запуска интерфейс доступен на порту `8080` машины, где запущена админка.
 
-## Инструменты
+## Карты и локализация
 
-Нужны `colmap` и `glomap` в системе (собираются из исходников, CUDA-сборка).
-Проверить: `colmap -h | head -2`, `glomap -h`.
+Сборка карт вынесена в [module4_map_builder](module4_map_builder/README.md). Module2 загружает только готовые runtime-карты и не содержит COLMAP/GLOMAP pipeline.
 
-```bash
-# карта из одной камеры
-uv run --no-sync python module2_localization/tools/build_map.py --images <папка> --tag map_new
-
-# длинный последовательный маршрут: единая инкрементальная карта, без словаря
-uv run --no-sync python -m module2_localization.tools.build_map \
-    --images frames_ns1_rear --tag map_ns1_rear \
-    --det-threshold 0.04 --pairs sequential --pair-offsets 1,3,6,10,16,25 \
-    --init-image-ids 1 11
-
-# карта из 3-камерного рига (кадры синхронны, имена {время}_c{N}.jpg)
-uv run --no-sync python module2_localization/tools/build_map_rig.py \
-    --videos rec3/camera-1.mkv rec3/camera-2.mkv rec3/camera-3.mkv --tag map_rig3
-
-# экспорт карты для рантайма (после сборки карты — обязательно)
-uv run --no-sync python module2_localization/tools/export_map.py --map map_rig3
-
-# метрический масштаб карты из одометрии
-uv run --no-sync python module2_localization/tools/scale_from_odometry.py \
-    --map map_rig3 --log rec3/encoder-log.jsonl
-
-# картинка карты и видео-самотест (карта + кадр + позиция + команда)
-uv run --no-sync python module2_localization/tools/draw_map.py --map map_rig3
-uv run --no-sync python module2_localization/tools/make_video.py <видео> \
-    --map map_rig3 --route-cam _c2 --step 10 --kpts 8192 --q-threshold 0.05
-
-# посмотреть карту в COLMAP
-colmap gui --import_path module2_localization/maps/map_rig3/sparse/0
-```
-
-Демон и видеопрогон считают команду одним кодом ([core/command_filter.py](module2_localization/core/command_filter.py)),
-поэтому видео показывает ровно то, что уйдёт роботу.
+Runtime и видеопрогон используют одно навигационное ядро, поэтому диагностическое видео должно показывать ту же команду, которая уйдёт роботу.
 
 ## Деплой на Jetson (Orin Nano 8 ГБ, JetPack 6 / Ubuntu 22.04)
 
@@ -178,20 +142,7 @@ gst-launch-1.0 shmsrc socket-path=/tmp/cam_raw ! \
   videoconvert ! fakesink -v
 ```
 
-### Вариант 1: контейнер
-
-```bash
-docker compose -f docker-compose.jetson.yml build
-docker compose -f docker-compose.jetson.yml up -d
-docker compose -f docker-compose.jetson.yml logs -f localization
-docker compose -f docker-compose.jetson.yml down
-```
-
-`network_mode: host` — чтобы демон и веб-админка видели локальный NATS
-снаружи. `ipc: host` и монтирование `/tmp` — чтобы `shmsrc` добрался до разделяемой
-памяти fan-out. Без них сокет откроется, а кадры не придут.
-
-### Вариант 2: systemd, без контейнера
+### Деплой через systemd
 
 Torch и OpenCV на Jetson берутся из JetPack, `uv sync` здесь не применяется —
 недостающие пакеты ставятся `pip3` поверх системных. Компилировать нечего:

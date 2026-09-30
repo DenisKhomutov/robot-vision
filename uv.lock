@@ -2237,32 +2237,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pycolmap"
-version = "4.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/43/88/31f1ebe06ecd237095de39337fbfd70770f6ad8aec1edcfbbc9ebea56c5a/pycolmap-4.1.0-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:2d660a8e42385e44e550144d23b10fb0b5ddce1fe6d446cfe469f4b05448524b", size = 20296807, upload-time = "2026-06-26T13:48:23.051Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/ec/ee48c0465698ce15590db853afc4f126350e9f9c816e0c1b7c09dfe3dcb6/pycolmap-4.1.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:dcea27f37ed1bba21fac751684c9fd04100fe8110a116f6975201751c6f94f6b", size = 27809125, upload-time = "2026-06-26T13:48:26.475Z" },
-    { url = "https://files.pythonhosted.org/packages/f6/1c/8aaeff5c428b9bfa75e891e5b52982ade1db31fb20257ccdafae6a779115/pycolmap-4.1.0-cp310-cp310-win_amd64.whl", hash = "sha256:3a3e084a8e47fe53299c6cd1b99c1fb4fd24d163e8938b2cc1dd5a921f274bf9", size = 23439820, upload-time = "2026-06-26T13:48:30.11Z" },
-    { url = "https://files.pythonhosted.org/packages/70/d0/7a9df9a1de0993f2b97d59e73bd078432cf90d7273d2fc6210b38bc60633/pycolmap-4.1.0-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:43f227925074176e26ea80c25144fbe9538c7c3da99e23e31f5749cce9e0428c", size = 20298589, upload-time = "2026-06-26T13:48:33.986Z" },
-    { url = "https://files.pythonhosted.org/packages/60/71/cdc35ec892937f0abad4a4bcfc0247238c9ec437fe14b41a4e55c374f9a0/pycolmap-4.1.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:e3251ccde0054bd8f7faa5420e093718395b522fdd5c0feeb82bfe89fcf6e667", size = 27808985, upload-time = "2026-06-26T13:48:37.983Z" },
-    { url = "https://files.pythonhosted.org/packages/d4/2f/bc3ec1dc9ce3763f91b4f645371f952474fea903942527f5831253333d70/pycolmap-4.1.0-cp311-cp311-win_amd64.whl", hash = "sha256:c5a581ad11e69561a49b903b91da8b8fbd5a67b9250d9fef9144d95109bb8103", size = 23442806, upload-time = "2026-06-26T13:48:41.886Z" },
-    { url = "https://files.pythonhosted.org/packages/1f/fb/1a424b5b79129a349b9348df70c1efaa716e590698d0284d66835ba43eca/pycolmap-4.1.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:ea6806e3e8a64f2639de290f200ac758b2338cd4d87d149bfdacf51ebc01e38b", size = 20366027, upload-time = "2026-06-26T13:48:45.391Z" },
-    { url = "https://files.pythonhosted.org/packages/ca/40/fa7e1f2cc586d7ae8832f559682fde8d34369f0d578a7de9846b9a6f0f5a/pycolmap-4.1.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:fd847e812b62d70d9fbed66e1a46d8cfe7899422eb34a24d366baa5713f702cf", size = 27843977, upload-time = "2026-06-26T13:48:49.249Z" },
-    { url = "https://files.pythonhosted.org/packages/97/75/e2be23a761684043a954cea5fdebfa6919eb9f030904acedae720b830396/pycolmap-4.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:3bd1c563d5ea732d77a31bd8f553f48c5d7e40bacc6afd2c8f2dfca27036a470", size = 23458521, upload-time = "2026-06-26T13:48:52.92Z" },
-    { url = "https://files.pythonhosted.org/packages/bd/d0/62f983fcaf1b17d5cdcc8c235f77591e52c7f8d0f709657f533d42d98407/pycolmap-4.1.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:f31c0584d6c85ad5192fb224a9ec1a2413c6af405bc558ca38e9017eb510967f", size = 20366176, upload-time = "2026-06-26T13:48:56.277Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/e6/7747d20eee93a6928074fcdd05bc080fb30b78c57f92fe71b15ee7a55584/pycolmap-4.1.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:5b111eedd7c57f63471ef2d6003e93f6c9efe0f1b72a910c4aad246ea7e9da43", size = 27844029, upload-time = "2026-06-26T13:48:59.859Z" },
-    { url = "https://files.pythonhosted.org/packages/12/dc/b883848edaeb05c38c3feee1746db5ce7ff5974f311d933dad702944fe4c/pycolmap-4.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:f19b83a81f6b86bf25c149b51b805726cc7da9f7d038ae98a1f761a885f61e45", size = 23457882, upload-time = "2026-06-26T13:49:03.35Z" },
-    { url = "https://files.pythonhosted.org/packages/7d/26/ef58ba9839d7b4f358acf5c11a095c2c91344acdeabf99ab9aa2a4175ca4/pycolmap-4.1.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:015cadc998a9cefb2120c2a84958b2fbc564cc0f66891e95a7bd438f1440c809", size = 20379056, upload-time = "2026-06-26T13:49:06.909Z" },
-    { url = "https://files.pythonhosted.org/packages/51/d2/c4887bfed031b3c3100deb5f8a6d7f7ab796b0fa80370c316ee5b1e05367/pycolmap-4.1.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:3310ba9de63a699f12130a7c4cd7605429fbb3c577b359c464964a552d33c600", size = 27847165, upload-time = "2026-06-26T13:49:10.7Z" },
-    { url = "https://files.pythonhosted.org/packages/59/00/1aed54eb5c5e0c9b1240fd84474122f7ea21bba0a4de213256b9580d0d0e/pycolmap-4.1.0-cp314-cp314-win_amd64.whl", hash = "sha256:93f64ec51f5d7860bfd3bfafafbc09fedc1532d54d2264733c23236713243400", size = 24162693, upload-time = "2026-06-26T13:49:14.466Z" },
-]
-
-[[package]]
 name = "pyparsing"
 version = "3.3.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2372,12 +2346,14 @@ dependencies = [
     { name = "kornia", version = "0.8.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
     { name = "lightglue" },
     { name = "loguru" },
+    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
+    { name = "matplotlib", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
     { name = "nats-py" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-12-robot-vision-cpu' and extra == 'extra-12-robot-vision-cu126')" },
     { name = "opencv-python" },
     { name = "pillow" },
-    { name = "pycolmap" },
+    { name = "pyyaml" },
     { name = "tqdm" },
     { name = "ultralytics" },
 ]
@@ -2406,11 +2382,12 @@ requires-dist = [
     { name = "kornia", specifier = ">=0.8.2" },
     { name = "lightglue", git = "https://github.com/cvg/LightGlue.git" },
     { name = "loguru", specifier = ">=0.7.3" },
+    { name = "matplotlib" },
     { name = "nats-py", specifier = ">=2.6.0" },
     { name = "numpy" },
     { name = "opencv-python" },
     { name = "pillow" },
-    { name = "pycolmap", specifier = ">=4.1.0" },
+    { name = "pyyaml" },
     { name = "torch", marker = "extra == 'cpu'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "robot-vision", extra = "cpu" } },
     { name = "torch", marker = "extra == 'cu126'", index = "https://download.pytorch.org/whl/cu126", conflict = { package = "robot-vision", extra = "cu126" } },
     { name = "torchvision", marker = "extra == 'cpu'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "robot-vision", extra = "cpu" } },

@@ -10,7 +10,6 @@ dependencies = [
     "ultralytics",
     "loguru>=0.7.3",
     "kornia>=0.8.2",
-    "pycolmap>=4.1.0",
     "nats-py>=2.6.0",
     "lightglue",
     "faiss-cpu>=1.15.0",
@@ -98,3 +97,7 @@ select = [
     "ISC002",
     "ISC003",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".git", ".venv", "venv", "module4_map_builder/external", "out", "data"]
