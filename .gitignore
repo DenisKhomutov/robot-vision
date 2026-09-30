@@ -57,3 +57,6 @@ module2_localization/out/
 module2_localization/exp/artifacts/
 out/
 logs/
+# Module 4 experimental outputs and external engines
+module4_map_builder/out/
+module4_map_builder/external/

@@ -14,6 +14,8 @@ dependencies = [
     "nats-py>=2.6.0",
     "lightglue",
     "faiss-cpu>=1.15.0",
+    "matplotlib",
+    "pyyaml",
 ]
 
 [project.optional-dependencies]
@@ -51,7 +53,7 @@ url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["module2_localization", "module1_traffic_light", "module3_segmentation"]
+packages = ["module2_localization", "module1_traffic_light", "module3_segmentation", "module4_map_builder"]
 
 [build-system]
 requires = ["hatchling"]
