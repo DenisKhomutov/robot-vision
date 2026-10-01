@@ -18,7 +18,7 @@ from module2_localization import config
 from module2_localization.core.command_filter import NavigationCommandFilter
 from module2_localization.localization.factory import create_runtime_localizer
 from module2_localization.runtime.frame_timeout import FrameTimeoutGuard
-from module2_localization.runtime.motion_controllers import DirectionController, RouteProfileController
+from module2_localization.runtime.motion_controllers import DirectionController
 from module2_localization.runtime.traffic_controller import TrafficBranch
 
 MAP_SIZE = 720
@@ -89,7 +89,6 @@ def main() -> int:
                              "детекция всегда на кадре фронта, а не активной навигационной камеры)")
     parser.add_argument("--direction", action=argparse.BooleanOptionalAction, default=False,
                         help="проверка зон заднего хода (config.BACKWARD_ZONES)")
-    parser.add_argument("--terminal-maneuvers", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--frame-timeout", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
 
@@ -102,22 +101,12 @@ def main() -> int:
             parser.error("--recovery-min-inliers должен быть не меньше 6")
         config.SHARD_RECOVERY_MIN_INLIERS = int(args.recovery_min_inliers)
 
-    min_shard_index = None
-    max_shard_index = None
-    if not args.terminal_maneuvers and args.map.startswith("2-1/"):
-        if args.map == "2-1/front_shard/01_of_25":
-            args.map = "2-1/front_shard/02_of_25"
-        min_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MIN_SHARD_INDEX", None)
-        max_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MAX_SHARD_INDEX", None)
-
     back_facing = args.back_facing
     if back_facing is None:
         back_facing = "rear" in args.map.lower()
     print(f"[видео] back_facing={back_facing} (карта {args.map})", flush=True)
     localizer = create_runtime_localizer(
         args.map, back_facing,
-        min_shard_index=min_shard_index,
-        max_shard_index=max_shard_index,
     )
 
 
@@ -127,7 +116,6 @@ def main() -> int:
     pilot = NavigationCommandFilter(config)
     pilot.resume()
     direction = DirectionController(config, enabled=args.direction)
-    route_profile = RouteProfileController(config, terminal_maneuvers=args.terminal_maneuvers)
     traffic = None
     traffic_completed = False
     frame_guard = FrameTimeoutGuard(
@@ -165,7 +153,6 @@ def main() -> int:
         "step": int(args.step),
         "direction": bool(args.direction),
         "traffic": bool(args.traffic),
-        "terminal_maneuvers": bool(args.terminal_maneuvers),
         "frame_timeout": bool(args.frame_timeout),
     }, ensure_ascii=False) + "\n")
     started = time.perf_counter()
@@ -216,8 +203,6 @@ def main() -> int:
         global_node = command_global_node
         command["global_node"] = command_global_node
         command["map"] = map_name
-        command["route"] = "2-1" if args.map.startswith("2-1/") else None
-        route_profile.process(command)
 
         direction_label = "forward"
         if args.direction:
@@ -276,7 +261,6 @@ def main() -> int:
             "deg": command.get("deg"), "target_node": command.get("target_node"),
             "traffic_in_zone": in_zone, "traffic_state": traffic_label, "traffic_signal": traffic_signal,
             "direction": direction_label if args.direction else None,
-            "terminal_maneuvers": command.get("terminal_maneuvers"),
             "localization_diagnostics": result.get("diagnostics"),
             "pilot_state": pilot.diagnostics(now=source_index / source_fps),
             "frame_guard": frame_state,

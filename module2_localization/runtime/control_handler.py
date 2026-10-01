@@ -6,15 +6,8 @@ from .. import config
 from ..localization.factory import create_runtime_localizer
 
 
-def make_control_handler(
-    nav, traffic=None, full_recovery=None, direction=None, route_profile=None, frame_guard=None, navlog=None
-):
+def make_control_handler(nav, traffic=None, full_recovery=None, direction=None, frame_guard=None, navlog=None):
     async def _ensure_map(map_name, route):
-        min_shard_index = None
-        max_shard_index = None
-        if route == "2-1" and route_profile is not None and not route_profile.terminal_maneuvers:
-            min_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MIN_SHARD_INDEX", 1)
-            max_shard_index = getattr(config, "ROUTE_21_NO_MANEUVERS_MAX_SHARD_INDEX", 23)
         if nav.localizer is not None and nav.map == map_name:
             return True
         print(f"[control] загрузка {map_name} (маршрут {route})...", flush=True)
@@ -23,10 +16,8 @@ def make_control_handler(
                 create_runtime_localizer,
                 map_name,
                 getattr(config, "CAMERA_BACK", False),
-                full_recovery,
-                min_shard_index,
-                max_shard_index,
-                navlog.emit if navlog is not None else None,
+                full_recovery=full_recovery,
+                event_sink=navlog.emit if navlog is not None else None,
             )
             nav.set_localizer(localizer, map_name, route=route)
         except Exception as exc:
@@ -53,8 +44,6 @@ def make_control_handler(
             nav.resume()
         elif cmd == "reset":
             nav.reset()
-            if route_profile:
-                route_profile.reset()
             if traffic:
                 traffic.reset()
         elif cmd == "reset_traffic":
@@ -91,8 +80,6 @@ def make_control_handler(
                 return
             if traffic:
                 traffic.reset()
-            if route_profile:
-                route_profile.reset()
             print(f"[control] маршрут -> {route}", flush=True)
             return
         elif cmd == "clear_route":
@@ -102,8 +89,6 @@ def make_control_handler(
             nav.clear_route()
             if traffic:
                 traffic.reset()
-            if route_profile:
-                route_profile.reset()
             gc.collect()
             try:
                 import torch
@@ -133,22 +118,6 @@ def make_control_handler(
                 return
             frame_guard.set_enabled(bool(c.get("enabled")))
             print(f"[control] контроль потока кадров -> {'ON' if frame_guard.enabled else 'OFF'}", flush=True)
-            return
-        elif cmd == "set_terminal_maneuvers":
-            if route_profile is None:
-                print("[control] профиль конечных манёвров недоступен", flush=True)
-                return
-            if not nav.pilot.paused:
-                print("[control] set_terminal_maneuvers: сначала ПАУЗА", flush=True)
-                return
-            if nav.route is not None:
-                print("[control] set_terminal_maneuvers: сначала выгрузите маршрут", flush=True)
-                return
-            route_profile.set_terminal_maneuvers(bool(c.get("enabled")))
-            print(
-                f"[control] манёвры начала/конца 2-1 -> {'ON' if route_profile.terminal_maneuvers else 'OFF'}",
-                flush=True,
-            )
             return
         else:
             print(f"[control] неизвестная команда: {cmd}", flush=True)

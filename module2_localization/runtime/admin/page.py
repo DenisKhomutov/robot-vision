@@ -88,7 +88,6 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
   <span id="traffic" class="badge">светофор off</span>
   <span id="direction" class="badge">направление off</span>
   <span id="frameGuard" class="badge">контроль кадров off</span>
-  <span id="maneuvers" class="badge ok">манёвры вкл</span>
   <span id="recovery" class="badge ok">shard</span>
 </header>
 <main>
@@ -152,11 +151,6 @@ label.field{display:block;font-size:.78rem;color:var(--muted);margin:10px 0 4px}
 
     <section class="card">
       <h2>Маршрут</h2>
-      <label class="field">Стартовый и конечный манёвры 2-1</label>
-      <div class="row2" style="margin-bottom:8px">
-        <button class="toggle profile-gated" id="btnManeuversOn" data-cmd="set_terminal_maneuvers" data-enabled="true">ВКЛ</button>
-        <button class="toggle profile-gated" id="btnManeuversOff" data-cmd="set_terminal_maneuvers" data-enabled="false">БЕЗ МАНЁВРОВ</button>
-      </div>
       <button class="ghost" id="showRoutes" style="width:100%;margin-bottom:8px">ДОСТУПНЫЕ МАРШРУТЫ</button>
       <div id="routeCatalog" class="route-catalog"></div>
       <select id="routeSelect" class="gated"></select>
@@ -285,9 +279,6 @@ async function tick(){
       status.frame_guard_enabled?`кадры ${status.frame_timed_out?'ТАЙМАУТ':'в норме'}`:'контроль кадров выкл',
       status.frame_timed_out?'bad':(status.frame_guard_enabled?'ok':''));
 
-    setBadge($('#maneuvers'),status.terminal_maneuvers===false?'манёвры 2-1 выкл':'манёвры 2-1 вкл',
-      status.terminal_maneuvers===false?'warn':'ok');
-
     $('#mode').textContent=status.map?'одна камера':'карта не выбрана';
     $('#mode').className='badge'+(status.map_mismatch?' bad':'');
 
@@ -311,11 +302,7 @@ async function tick(){
     $('#btnDirOff').classList.toggle('active',!status.direction_enabled);
     $('#btnGuardOn').classList.toggle('active',!!status.frame_guard_enabled);
     $('#btnGuardOff').classList.toggle('active',!status.frame_guard_enabled);
-    $('#btnManeuversOn').classList.toggle('active',status.terminal_maneuvers!==false);
-    $('#btnManeuversOff').classList.toggle('active',status.terminal_maneuvers===false);
-
     document.querySelectorAll('.gated').forEach(el=>el.disabled=!paused);
-    document.querySelectorAll('.profile-gated').forEach(el=>el.disabled=!paused||!!status.route);
 
     draw();
   }catch(e){$('#message').textContent=e}

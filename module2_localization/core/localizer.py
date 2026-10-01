@@ -22,7 +22,7 @@ from .runtime_map import load_runtime_map
 class ALIKEDLocalizer:
     def __init__(
         self,
-        map_name="map_office_ref",
+        map_name,
         device=None,
         kpts=2048,
         route_range=None,

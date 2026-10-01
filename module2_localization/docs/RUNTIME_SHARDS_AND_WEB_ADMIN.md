@@ -82,8 +82,8 @@ WAIT_RED → WAIT_GREEN → GO
 ## Управление и диагностика
 
 Админка публикует команды в `robot.vision.control`: `pause`, `resume`, `reset`,
-`reset_shard`, `set_route`, `clear_route`, `set_mode`, `set_traffic`,
-`reset_traffic`, `set_direction`, `set_terminal_maneuvers`.
+`reset_shard`, `set_route`, `clear_route`, `set_traffic`, `reset_traffic`,
+`set_direction`, `set_frame_guard`.
 
 Результаты публикуются в `robot.vision.localization`. Полный контракт приведён в
 `NATS_COMMAND_REFERENCE.md`, запуск — в `SYSTEM_START_QUICK.md`, диагностический

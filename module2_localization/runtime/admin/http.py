@@ -131,7 +131,6 @@ async def serve(bind="0.0.0.0", port=8080, nats_url=None, logs_dir=DEFAULT_LOGS_
                     "clear_route",
                     "set_traffic",
                     "set_direction",
-                    "set_terminal_maneuvers",
                     "set_frame_guard",
                     "set_frame_hash",
                 }

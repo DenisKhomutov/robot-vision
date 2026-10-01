@@ -228,7 +228,7 @@ def validate_route(audit: Audit, maps: Path, route: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--maps-dir", type=Path, default=Path("module2_localization/maps"))
-    parser.add_argument("--routes", nargs="+", default=["1-2", "2-1", "3-1"])
+    parser.add_argument("--routes", nargs="+", required=True)
     args = parser.parse_args()
     audit = Audit()
     for route in args.routes:

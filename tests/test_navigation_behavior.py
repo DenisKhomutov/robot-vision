@@ -8,7 +8,7 @@ from module2_localization.core.command_filter import NavigationCommandFilter, to
 from module2_localization.core.route_follower import RouteFollower
 from module2_localization.runtime.admin.page import HTML
 from module2_localization.runtime.frame_timeout import FrameTimeoutGuard
-from module2_localization.runtime.motion_controllers import DirectionController, RouteProfileController
+from module2_localization.runtime.motion_controllers import DirectionController
 from module2_localization.runtime.traffic_controller import TrafficBranch
 
 
@@ -164,12 +164,12 @@ class NavigationCoordinatorTests(unittest.TestCase):
             def locate(self, frame):
                 return localization_result(node=4, inliers=30)
 
-        cfg = pilot_config(ROUTES={"office": {"map": "office"}})
-        navigator = CameraNavigator(Localizer(), cfg, map_name="office", route="office")
+        cfg = pilot_config(ROUTES={"test-route": {"map": "test-map"}})
+        navigator = CameraNavigator(Localizer(), cfg, map_name="test-map", route="test-route")
         navigator.resume()
         command = navigator.step(np.zeros((2, 2, 3), dtype=np.uint8))
         self.assertEqual(command["move_type"], "straight")
-        self.assertEqual(command["map"], "office")
+        self.assertEqual(command["map"], "test-map")
         self.assertEqual(command["global_node"], 4)
         self.assertNotIn("cam", command)
         self.assertNotIn("mode", command)
@@ -214,10 +214,10 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertAlmostEqual(command["deg"], -10.0)
 
     def test_first_short_reverse_shard_uses_backward_inversion(self):
-        map_name = "2-1-short/front_shard/01_of_15"
+        map_name = "test-route/shard/01_of_02"
         cfg = SimpleNamespace(
             BACKWARD_ZONES={},
-            BACKWARD_MAPS={map_name, "2-1-short/front_shard/15_of_15"},
+            BACKWARD_MAPS={map_name, "test-route/shard/02_of_02"},
             BACKWARD_RIGHT_ONLY_MAPS={map_name},
             STEERING_OUTLIER_GUARDS={},
             DEADZONE_DEG=4.0,
@@ -230,11 +230,11 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertAlmostEqual(command["deg"], 10.0)
 
     def test_last_short_reverse_shard_uses_same_backward_inversion(self):
-        map_name = "2-1-short/front_shard/15_of_15"
+        map_name = "test-route/shard/02_of_02"
         cfg = SimpleNamespace(
             BACKWARD_ZONES={},
-            BACKWARD_MAPS={"2-1-short/front_shard/01_of_15", map_name},
-            BACKWARD_RIGHT_ONLY_MAPS={"2-1-short/front_shard/01_of_15"},
+            BACKWARD_MAPS={"test-route/shard/01_of_02", map_name},
+            BACKWARD_RIGHT_ONLY_MAPS={"test-route/shard/01_of_02"},
             STEERING_OUTLIER_GUARDS={},
             DEADZONE_DEG=4.0,
         )
@@ -244,21 +244,6 @@ class RuntimeControllerTests(unittest.TestCase):
         self.assertEqual(command["direction"], "backward")
         self.assertEqual(command["move_type"], "right")
         self.assertAlmostEqual(command["deg"], 10.0)
-
-    def test_route_profile_latches_route_complete(self):
-        cfg = SimpleNamespace(
-            ROUTE_21_TERMINAL_MANEUVERS_DEFAULT=False,
-            ROUTE_21_NO_MANEUVERS_MIN_NODE=27,
-            ROUTE_21_NO_MANEUVERS_STOP_NODE=1595,
-        )
-        controller = RouteProfileController(cfg)
-        command = {"route": "2-1", "global_node": 1595, "move_type": "left", "deg": -10.0}
-        controller.process(command)
-        self.assertEqual(command["move_type"], "stop")
-        self.assertEqual(command["reason"], "route_complete")
-        next_command = {"route": "2-1", "global_node": None, "move_type": "lost"}
-        controller.process(next_command)
-        self.assertEqual(next_command["reason"], "route_complete")
 
     def test_traffic_requires_red_before_green_and_latches_go(self):
         branch = TrafficBranch.__new__(TrafficBranch)

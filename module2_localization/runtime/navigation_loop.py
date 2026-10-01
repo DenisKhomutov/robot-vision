@@ -15,14 +15,13 @@ async def worker(
     traffic=None,
     full_recovery=None,
     direction=None,
-    route_profile=None,
     frame_guard=None,
     navlog=None,
 ) -> None:
     if nc:
         await nc.subscribe(
             config.NATS_CONTROL_TOPIC,
-            make_control_handler(nav, traffic, full_recovery, direction, route_profile, frame_guard, navlog),
+            make_control_handler(nav, traffic, full_recovery, direction, frame_guard, navlog),
         )
     last_token = None
     last_timeout_publish = 0.0
@@ -35,8 +34,6 @@ async def worker(
             nav.reset_shard()
             if traffic is not None:
                 traffic.reset()
-            if route_profile is not None:
-                route_profile.reset()
             print(f"[video] новый цикл {video_cycle}: состояние маршрута и светофора сброшено", flush=True)
             if navlog is not None:
                 navlog.emit("video_cycle_reset", video_cycle=video_cycle, route=nav.route)
@@ -67,10 +64,6 @@ async def worker(
             if navlog is not None:
                 navlog.emit("command_after_navigation", source_stamp=token, command=dict(cmd))
                 navlog.emit("navigation_state", source_stamp=token, state=nav.diagnostics())
-            if route_profile is not None:
-                route_profile.process(cmd)
-                if navlog is not None:
-                    navlog.emit("command_after_route_profile", source_stamp=token, command=dict(cmd))
             if direction is not None:
                 direction.process(cmd)
                 if navlog is not None:
@@ -89,8 +82,6 @@ async def worker(
             cmd = _timeout_command(nav)
             cmd["frame_guard_enabled"] = True
             cmd["frame_timed_out"] = True
-            if route_profile is not None:
-                route_profile.process(cmd)
             if direction is not None:
                 direction.process(cmd)
             if traffic is not None:

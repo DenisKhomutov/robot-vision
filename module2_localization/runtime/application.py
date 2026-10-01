@@ -8,7 +8,7 @@ from ..core.navigator import CameraNavigator
 from ..localization.factory import create_runtime_localizer
 from .frame_sources import CameraSource, ShmSource, VideoFileSource
 from .frame_timeout import FrameTimeoutGuard
-from .motion_controllers import DirectionController, RouteProfileController
+from .motion_controllers import DirectionController
 from .nats_gateway import NatsClient
 from .navigation_logger import NavigationLog, log_runtime_start
 from .navigation_loop import worker
@@ -60,9 +60,6 @@ async def run(args) -> int:
 
     direction = DirectionController(config, enabled=getattr(config, "DIRECTION_ENABLED", False))
     print(f"[dir] runtime-переключатель готов; старт={'ON' if direction.enabled else 'OFF'}", flush=True)
-    route_profile = RouteProfileController(config)
-    print(f"[route-profile] манёвры начала/конца 2-1={'ON' if route_profile.terminal_maneuvers else 'OFF'}", flush=True)
-
     nc = None
     if not args.no_nats:
         try:
@@ -111,7 +108,6 @@ async def run(args) -> int:
             traffic,
             recovery,
             direction,
-            route_profile,
             frame_guard,
             navlog,
         )
