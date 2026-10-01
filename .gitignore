@@ -10,7 +10,6 @@ venv/
 
 .uv/
 
-data/
 qdrant_storage/
 weights/
 
@@ -55,16 +54,12 @@ experiment/pose_out/
 
 module2_localization/out/
 out/
-logs/
 
-module4_map_builder/out/
-module4_map_builder/external/
+module3_map_builder/out/
+module3_map_builder/external/
 
 # Keep the intended local artifact directory layout in clean checkouts.
 # Generated contents remain ignored; only the placeholder is tracked.
-!/data/
-/data/*
-!/data/.gitkeep
 !/qdrant_storage/
 /qdrant_storage/*
 !/qdrant_storage/.gitkeep
@@ -107,9 +102,6 @@ module4_map_builder/external/
 !/out/
 /out/*
 !/out/.gitkeep
-!/logs/
-/logs/*
-!/logs/.gitkeep
 !/module1_traffic_light/data/
 /module1_traffic_light/data/*
 !/module1_traffic_light/data/.gitkeep
@@ -119,18 +111,12 @@ module4_map_builder/external/
 !/module2_localization/weights/
 /module2_localization/weights/*
 !/module2_localization/weights/.gitkeep
-!/module3_segmentation/data/
-/module3_segmentation/data/*
-!/module3_segmentation/data/.gitkeep
-!/module3_segmentation/weights/
-/module3_segmentation/weights/*
-!/module3_segmentation/weights/.gitkeep
-!/module4_map_builder/out/
-/module4_map_builder/out/*
-!/module4_map_builder/out/.gitkeep
-!/module4_map_builder/external/
-/module4_map_builder/external/*
-!/module4_map_builder/external/.gitkeep
+!/module3_map_builder/out/
+/module3_map_builder/out/*
+!/module3_map_builder/out/.gitkeep
+!/module3_map_builder/external/
+/module3_map_builder/external/*
+!/module3_map_builder/external/.gitkeep
 !/experiment/reloc3r/
 /experiment/reloc3r/*
 !/experiment/reloc3r/.gitkeep
@@ -167,6 +153,14 @@ module4_map_builder/external/
 !/module2_localization/weights/
 /module2_localization/weights/*
 !/module2_localization/weights/.gitkeep
-!/module4_map_builder/weights/
-/module4_map_builder/weights/*
-!/module4_map_builder/weights/.gitkeep
+!/module3_map_builder/weights/
+/module3_map_builder/weights/*
+!/module3_map_builder/weights/.gitkeep
+
+!/module2_localization/logs/
+/module2_localization/logs/*
+!/module2_localization/logs/.gitkeep
+
+!/module3_map_builder/data/
+/module3_map_builder/data/*
+!/module3_map_builder/data/.gitkeep

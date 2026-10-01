@@ -4,8 +4,8 @@ import json
 import signal
 
 from .. import config
-from ..core.camera_navigator import CameraNavigator
-from ..services.localizer_factory import create_runtime_localizer
+from ..core.navigator import CameraNavigator
+from ..localization.factory import create_runtime_localizer
 from .frame_sources import CameraSource, ShmSource, VideoFileSource
 from .frame_timeout import FrameTimeoutGuard
 from .motion_controllers import DirectionController, RouteProfileController

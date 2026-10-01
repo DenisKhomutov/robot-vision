@@ -25,7 +25,7 @@ def color_for(label):
 def main():
     ap = argparse.ArgumentParser(description="Прогон видео через пайплайн светофора: рамка + класс -> out")
     ap.add_argument("video")
-    ap.add_argument("--out", default="module2_localization/out/traffic_preview")
+    ap.add_argument("--out", default="module1_traffic_light/out/traffic_preview")
     ap.add_argument("--step", type=int, default=5, help="обрабатывать каждый N-й кадр")
     ap.add_argument("--det-conf", type=float, default=None,
                     help="порог детекции светофора (ниже дефолтного 0.25 -> ловит больше/дальше)")

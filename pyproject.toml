@@ -52,7 +52,7 @@ url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["module2_localization", "module1_traffic_light", "module3_segmentation", "module4_map_builder"]
+packages = ["module1_traffic_light", "module2_localization", "module3_map_builder"]
 
 [build-system]
 requires = ["hatchling"]
@@ -100,4 +100,4 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = [".git", ".venv", "venv", "module4_map_builder/external", "out", "data"]
+norecursedirs = [".git", ".venv", "venv", "module3_map_builder/external", "out", "data"]

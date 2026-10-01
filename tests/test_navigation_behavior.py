@@ -3,10 +3,10 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from module2_localization.core.camera_navigator import CameraNavigator
+from module2_localization.core.navigator import CameraNavigator
 from module2_localization.core.command_filter import NavigationCommandFilter, to_command
 from module2_localization.core.route_follower import RouteFollower
-from module2_localization.runtime.admin_page import HTML
+from module2_localization.runtime.admin.page import HTML
 from module2_localization.runtime.frame_timeout import FrameTimeoutGuard
 from module2_localization.runtime.motion_controllers import DirectionController, RouteProfileController
 from module2_localization.runtime.traffic_controller import TrafficBranch

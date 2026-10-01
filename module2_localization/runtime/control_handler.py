@@ -3,7 +3,7 @@ import gc
 import json
 
 from .. import config
-from ..services.localizer_factory import create_runtime_localizer
+from ..localization.factory import create_runtime_localizer
 
 
 def make_control_handler(

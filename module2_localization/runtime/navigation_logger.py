@@ -50,8 +50,7 @@ class NavigationLog:
     DEFAULT_MAX_BYTES = 150 * 1024 * 1024
 
     def __init__(self, root=None, max_bytes=None):
-        project_root = Path(__file__).resolve().parents[2]
-        self.root = Path(root) if root is not None else project_root / "logs"
+        self.root = Path(root) if root is not None else Path(__file__).resolve().parents[1] / "logs"
         self.root.mkdir(parents=True, exist_ok=True)
         self.max_bytes = int(max_bytes if max_bytes is not None else self.DEFAULT_MAX_BYTES)
         if self.max_bytes <= 0:

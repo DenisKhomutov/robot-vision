@@ -2,15 +2,18 @@
 
 `module2_localization` — однокамерный runtime-модуль робота. Он загружает готовую карту, локализует кадры единственного навигационного видеопотока, ведёт робота по маршруту и формирует управляющие команды. Переключения `front/rear/dual` в новом стеке нет.
 
-Сборка и экспорт новых карт в module2 запрещены. Новый конвейер сборки находится в [`module4_map_builder`](../module4_map_builder/README.md). Старый COLMAP/GLOMAP и MSLD стек удалён из ветки `10`; его история сохранена в ветке `9` и проекте `robot-vision-legacy`.
+Сборка и экспорт новых карт в module2 запрещены. Новый конвейер сборки находится в [`module3_map_builder`](../module3_map_builder/README.md). Старый COLMAP/GLOMAP и MSLD стек удалён из ветки `10`; его история сохранена в ветке `9` и проекте `robot-vision-legacy`.
 
 ## Структура
 
+- `config/parameters.py` — регулируемые параметры алгоритмов;
+- `config/deployment.py` — камера, транспорт кадров и NATS;
+- `config/maps.py` — реестр карт, маршрутов и параметры зон;
 - `core/` — локализатор, runtime-map loader, геометрия маршрута и фильтрация команд;
+- `localization/` — создание локализатора, shard manifest, preload и recovery;
 - `runtime/` — цикл навигации, источники кадров, NATS, диагностика и управление;
-- `services/` — загрузка карт и orchestration локализаторов;
+- `runtime/admin/` — данные, HTTP-сервер и страница веб-админки;
 - `maps/` — готовые runtime-карты;
-- `tools/` — только запуск, проверка и визуальная диагностика runtime;
 - `docs/` — эксплуатационная документация робота.
 
 ## Запуск
@@ -38,14 +41,8 @@ python -m module2_localization.service \
 - [STREET_NAVIGATION_TUNING.md](docs/STREET_NAVIGATION_TUNING.md) — настройка движения;
 - [REVERSE_STEERING_MODEL.md](docs/REVERSE_STEERING_MODEL.md) — задний ход.
 
-## Runtime-инструменты
-
-```bash
-python -m module2_localization.tools.run_localization
-python -m module2_localization.tools.verify_runtime_maps
-python -m module2_localization.tools.bench_locate --help
-python -m module2_localization.tools.preview_sharded_video --help
-```
+Инструменты проверки готовой карты и тестовые видеопрогоны находятся в
+`module3_map_builder/tools`. Они не входят в runtime-модуль робота.
 
 Маршрут в `config.ROUTES` содержит одну ссылку `map`; поля `front_map`, `rear_map` и команда `set_mode` не используются. Светофорный детектор получает тот же кадр, что и локализатор.
 

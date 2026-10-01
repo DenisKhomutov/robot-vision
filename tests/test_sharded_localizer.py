@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from module2_localization.services.sharded_localizer import ShardedLocalizer
+from module2_localization.localization.sharded_localizer import ShardedLocalizer
 
 
 class FakeBackend:

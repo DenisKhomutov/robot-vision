@@ -2,7 +2,7 @@
 
 ## Актуальная схема
 
-Маршруты задаются в `module2_localization/config.py` → `ROUTES`.
+Маршруты задаются в `module2_localization/config/maps.py` → `ROUTES`.
 
 - `1-2`: передняя камера, `1-2/front_shard/01_of_25`, 25 шардов;
 - `1-2-short`: передняя камера, `1-2-short/front_shard/01_of_15`, 15 шардов;
@@ -93,5 +93,5 @@ JSONL-журнал — в `NAVIGATION_LOGS.md`.
 `module2_localization/service.py` и `module2_localization/admin.py` являются
 тонкими точками входа. Основной цикл находится в `runtime/application.py` и
 `runtime/navigation_loop.py`, управление NATS — в `runtime/control_handler.py`,
-а логика загрузки и recovery шардов — в `runtime/shard_preload.py` и
-`runtime/shard_recovery.py`.
+а логика загрузки и recovery шардов — в `localization/shard_preload.py` и
+`localization/shard_recovery.py`.

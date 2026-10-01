@@ -5,7 +5,8 @@
 - **Модуль 1 — светофоры** (`module1_traffic_light`): детектор + классификатор.
 - **Модуль 2 — локализация** (`module2_localization`): ALIKED + 3D-карта маршрута,
   выдаёт команды рулю. Единственный, у которого сейчас есть боевой демон.
-- **Модуль 3 — сегментация покрытия** (`module3_segmentation`).
+- **Модуль 3 — сборка карт** (`module3_map_builder`): DPVO-позы, ALIKED/LightGlue,
+  триангуляция и экспорт runtime-карт. На роботе не запускается.
 
 Ни FastAPI, ни Qdrant, ни WebRTC не используются: кадры берутся локально из сокета
 камеры (GStreamer), команды уходят в NATS.
@@ -57,7 +58,7 @@
 ## Установка (машина разработки)
 
 ```bash
-./tools/sync.sh            # сам определит GPU и поставит нужную сборку torch
+./deploy/sync.sh            # сам определит GPU и поставит нужную сборку torch
 ```
 
 Явно, если нужно:
@@ -118,7 +119,7 @@ python -m module2_localization.admin \
 
 ## Карты и локализация
 
-Сборка карт вынесена в [module4_map_builder](module4_map_builder/README.md). Module2 загружает только готовые runtime-карты и не содержит COLMAP/GLOMAP pipeline.
+Сборка карт вынесена в [module3_map_builder](module3_map_builder/README.md). Module2 загружает только готовые runtime-карты и не содержит COLMAP/GLOMAP pipeline.
 
 Runtime и видеопрогон используют одно навигационное ядро, поэтому диагностическое видео должно показывать ту же команду, которая уйдёт роботу.
 
@@ -128,7 +129,7 @@ Runtime и видеопрогон используют одно навигаци
 **1280×720**, как у кадров, из которых собрана карта: при совпадении используется
 откалиброванная камера карты, иначе фокус угадывается и точность падает.
 
-Сокет и размеры — в [config.py](module2_localization/config.py) (`CAM_SHM_SOCKET`, `CAM_WIDTH`,
+Сокет и размеры — в [deployment.py](module2_localization/config/deployment.py) (`CAM_SHM_SOCKET`, `CAM_WIDTH`,
 `CAM_HEIGHT`). Они обязаны совпадать с caps, которые подаются в `shmsink`: через
 разделяемую память едут голые байты без описания формата, и расхождение даст мусор
 без единой ошибки.
@@ -153,7 +154,7 @@ rsync -a --exclude .venv --exclude .git <ноутбук>:~/projects/robot-vision
 cd ~/projects/robot-vision
 pip3 install "nats-py>=2.6.0" kornia loguru
 pip3 install --no-deps "lightglue @ git+https://github.com/cvg/LightGlue.git"
-sudo cp tools/systemd/*.service /etc/systemd/system/
+sudo cp deploy/systemd/*.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now robot-vision-localization
 journalctl -u robot-vision-localization -f
@@ -163,7 +164,7 @@ journalctl -u robot-vision-localization -f
 
 ### Что везти на робота
 
-Рантайму нужны только `config.py`, `service.py`, `nats_client.py`, `core/`, `services/`,
+Рантайму нужны `config/`, `service.py`, `admin.py`, `core/`, `localization/`, `runtime/`,
 `weights/aliked-n16.pth` и карта — файлы `runtime.npz`, `aliked_bank.npz`, `scale.json`,
 около 110 МБ. Папка `sparse/0`, `database.db` и `pairs.txt` нужны только при сборке карты
 и на робота не едут. Из пакетов на роботе: numpy, opencv, torch (из JetPack),
@@ -171,7 +172,9 @@ lightglue, kornia, nats-py, loguru — ничего компилировать �
 
 ## Настройки
 
-Всё в [module2_localization/config.py](module2_localization/config.py). Значимое:
+Алгоритмические настройки находятся в [parameters.py](module2_localization/config/parameters.py),
+окружение робота — в [deployment.py](module2_localization/config/deployment.py), карты и зоны —
+в [maps.py](module2_localization/config/maps.py). Значимое:
 
 | параметр | смысл |
 |---|---|
@@ -190,7 +193,6 @@ lightglue, kornia, nats-py, loguru — ничего компилировать �
 uv run --group dev ruff check .
 uv run --group dev ruff check --fix .
 uv run --group dev mypy --config-file pyproject.toml \
-    module1_traffic_light/ module2_localization/ module3_segmentation/
 ```
 
 ## Ограничения, о которых надо помнить

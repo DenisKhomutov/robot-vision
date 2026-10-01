@@ -3,7 +3,7 @@
 Демон автоматически пишет все запуски одного календарного дня в общий JSONL-файл:
 
 ```text
-<корень проекта>/logs/navigation_YYYYMMDD.jsonl
+<корень проекта>/module2_localization/logs/navigation_YYYYMMDD.jsonl
 ```
 
 При достижении 150 МиБ запись продолжается в `navigation_YYYYMMDD_002.jsonl`,
@@ -37,7 +37,7 @@
 
 ```bash
 cd ~/projects/robot-vision
-ls -1t logs/navigation_*.jsonl | head -1
+ls -1t module2_localization/logs/navigation_*.jsonl | head -1
 ```
 
 ## Скопировать последний журнал с Jetson
@@ -46,14 +46,14 @@ ls -1t logs/navigation_*.jsonl | head -1
 
 ```bash
 cd ~/projects/robot-vision
-mkdir -p logs/jetson
-scp 'jetson@192.168.40.48:/home/jetson/projects/robot-vision/logs/navigation_*.jsonl' logs/jetson/
+mkdir -p module2_localization/logs/jetson
+scp 'jetson@192.168.40.48:/home/jetson/projects/robot-vision/module2_localization/logs/navigation_*.jsonl' module2_localization/logs/jetson/
 ```
 
 ## Скачать через веб-админку
 
 В блоке `Журналы навигации` нажать `ОБНОВИТЬ`, выбрать файл и нажать `СКАЧАТЬ`.
-Файл читается непосредственно из каталога `logs` на Jetson, поэтому админку можно
+Файл читается непосредственно из каталога `module2_localization/logs` на Jetson, поэтому админку можно
 открыть в браузере на любом компьютере, имеющем сетевой доступ к Jetson.
 
 HTTP API:
@@ -65,19 +65,19 @@ GET /api/logs/download?name=navigation_....jsonl
 
 Скачивание активного журнала разрешено и возвращает его содержимое, уже записанное
 к моменту запроса. Сервер не разрешает абсолютные пути, `..`, вложенные каталоги и
-символические ссылки. По умолчанию используется `<корень проекта>/logs`; при
+символические ссылки. По умолчанию используется `<корень проекта>/module2_localization/logs`; при
 необходимости админку можно запустить с `--logs-dir /другой/каталог`.
 
 ## События потери локализации
 
 ```bash
-rg 'active_shard_result|full_recovery_.*result|full_recovery_rejected|service_failed' logs/navigation_*.jsonl
+rg 'active_shard_result|full_recovery_.*result|full_recovery_rejected|service_failed' module2_localization/logs/navigation_*.jsonl
 ```
 
 ## События смены шарда
 
 ```bash
-rg 'shard_preload|candidate_shard_result|switch_progress|shard_switched' logs/navigation_*.jsonl
+rg 'shard_preload|candidate_shard_result|switch_progress|shard_switched' module2_localization/logs/navigation_*.jsonl
 ```
 
 Для перехода `2-1/front_shard/24_of_25 → 25_of_25` действует дополнительная защита. Предзагрузка начинается как раньше, но наблюдаемый скачок больше четырёх узлов не продвигает внутреннюю границу переключения. Переход требует достижения узла 1596 последовательным прогрессом, трёх согласованных фиксов следующего шарда, минимум 35 inliers и расхождения оценок не более шести узлов. Другие переходы используют прежнюю логику.
@@ -85,7 +85,7 @@ rg 'shard_preload|candidate_shard_result|switch_progress|shard_switched' logs/na
 ## Финальные команды NATS
 
 ```bash
-rg '"event":"command_published"' logs/navigation_*.jsonl
+rg '"event":"command_published"' module2_localization/logs/navigation_*.jsonl
 ```
 
 ## Передача журнала
