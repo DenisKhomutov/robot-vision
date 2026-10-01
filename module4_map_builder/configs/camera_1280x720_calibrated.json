@@ -1,0 +1,85 @@
+{
+  "rms_px": 0.6510408480578752,
+  "median_view_error_px": 0.6199550032615662,
+  "max_view_error_px": 0.967836856842041,
+  "used_images": [
+    "calib_000003.jpg",
+    "calib_000004.jpg",
+    "calib_000005.jpg",
+    "calib_000008.jpg",
+    "calib_000009.jpg",
+    "calib_000010.jpg",
+    "calib_000011.jpg",
+    "calib_000013.jpg",
+    "calib_000014.jpg",
+    "calib_000015.jpg",
+    "calib_000016.jpg",
+    "calib_000017.jpg",
+    "calib_000018.jpg",
+    "calib_000019.jpg",
+    "calib_000020.jpg",
+    "calib_000021.jpg",
+    "calib_000022.jpg",
+    "calib_000023.jpg",
+    "calib_000026.jpg",
+    "calib_000027.jpg",
+    "calib_000028.jpg",
+    "calib_000029.jpg",
+    "calib_000030.jpg",
+    "calib_000031.jpg",
+    "calib_000032.jpg",
+    "calib_000033.jpg",
+    "calib_000034.jpg",
+    "calib_000035.jpg",
+    "calib_000037.jpg",
+    "calib_000040.jpg",
+    "calib_000041.jpg",
+    "calib_000042.jpg"
+  ],
+  "rejected_detection": [
+    "calib_000006.jpg",
+    "calib_000007.jpg",
+    "calib_000012.jpg",
+    "calib_000024.jpg",
+    "calib_000025.jpg"
+  ],
+  "rejected_error": [
+    {
+      "name": "calib_000039.jpg",
+      "error_px": 1.5499324798583984
+    },
+    {
+      "name": "calib_000038.jpg",
+      "error_px": 1.2188880443572998
+    },
+    {
+      "name": "calib_000036.jpg",
+      "error_px": 1.02336585521698
+    }
+  ],
+  "camera_matrix": [
+    [
+      1117.3562785951938,
+      0.0,
+      606.932009388182
+    ],
+    [
+      0.0,
+      1123.7003561482059,
+      398.4811684605821
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion": [
+    0.15543475885994582,
+    -0.28981015893585915,
+    0.00418673891973227,
+    -0.0037742589748077323,
+    -0.07516622567927976
+  ],
+  "dpvo_calibration": "/home/kilaxa/projects/robot-vision/module4_map_builder/configs/camera_1280x720_calibrated.txt"
+}
